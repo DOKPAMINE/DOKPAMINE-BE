@@ -58,6 +58,7 @@ class RecordService(
         if (dto.endPage != null && dto.endPage > book.totalPages) {
             throw ApiException.badRequest("종료 페이지가 전체 쪽수(${book.totalPages})를 넘어요.")
         }
+        // T09: 랭킹은 TIMER만 집계하므로 저장된 시간이 바뀐 세션은 요청 source와 무관하게 MANUAL로 굳힌다.
         val storedSource = when {
             existing == null -> dto.source
             existing.source == SessionSource.MANUAL -> SessionSource.MANUAL

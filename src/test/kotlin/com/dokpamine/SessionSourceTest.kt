@@ -71,6 +71,59 @@ class SessionSourceTest {
     }
 
     @Test
+    fun `스냅샷으로 받은 마이크로초 시각으로 재전송해도 TIMER로 남는다 (NFR-05)`() {
+        val token = signup()
+        val original = session(putBook(token), Instant.parse("2026-10-26T03:00:00.123456789Z"))
+        putSession(token, original)
+
+        val pulled = snapshotSessions(token).single()
+        val resent = original.copy(
+            startedAt = Instant.parse(pulled.path("startedAt").asString()),
+            endedAt = Instant.parse(pulled.path("endedAt").asString()),
+        )
+
+        assertEquals(Instant.parse("2026-10-26T03:00:00.123457Z"), resent.startedAt)
+        assertEquals("TIMER", putSession(token, resent).path("source").asString())
+        assertEquals("TIMER", snapshotSessions(token).single().path("source").asString())
+    }
+
+    @Test
+    fun `TIMER 세션의 시각을 1마이크로초만 바꿔도 MANUAL로 저장된다 (T09)`() {
+        val token = signup()
+        val original = session(putBook(token), Instant.parse("2026-10-26T03:00:00.123456Z"))
+        putSession(token, original)
+
+        val modified = original.copy(endedAt = original.endedAt.plusNanos(1_000))
+        assertEquals("MANUAL", putSession(token, modified).path("source").asString())
+        assertEquals("MANUAL", snapshotSessions(token).single().path("source").asString())
+    }
+
+    @Test
+    fun `검증에 실패한 시간 수정 요청은 저장된 TIMER를 바꾸지 않는다 (NFR-05)`() {
+        val token = signup()
+        val original = session(putBook(token))
+        putSession(token, original)
+
+        mvc.put("/api/sessions/${original.id}") {
+            bearer(token)
+            contentType = MediaType.APPLICATION_JSON
+            content = json.writeValueAsString(original.copy(bookId = UUID.randomUUID(), activeSeconds = 660))
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("BOOK_NOT_SYNCED") }
+        }
+        mvc.put("/api/sessions/${original.id}") {
+            bearer(token)
+            contentType = MediaType.APPLICATION_JSON
+            content = json.writeValueAsString(original.copy(endedAt = original.startedAt.minusSeconds(1)))
+        }.andExpect { status { isBadRequest() } }
+
+        val saved = snapshotSessions(token).single()
+        assertEquals("TIMER", saved.path("source").asString())
+        assertEquals(600, saved.path("activeSeconds").asInt())
+    }
+
+    @Test
     fun `MANUAL 세션을 TIMER로 다시 보내도 MANUAL로 남는다 (T09)`() {
         val token = signup()
         val original = session(putBook(token)).copy(source = SessionSource.MANUAL)
