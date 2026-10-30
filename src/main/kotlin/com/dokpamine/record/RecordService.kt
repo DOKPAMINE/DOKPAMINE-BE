@@ -5,6 +5,7 @@ import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
@@ -57,9 +58,17 @@ class RecordService(
         if (dto.endPage != null && dto.endPage > book.totalPages) {
             throw ApiException.badRequest("종료 페이지가 전체 쪽수(${book.totalPages})를 넘어요.")
         }
+        val storedSource = when {
+            existing == null -> dto.source
+            existing.source == SessionSource.MANUAL -> SessionSource.MANUAL
+            existing.startedAt.atDatabasePrecision() != dto.startedAt.atDatabasePrecision() ||
+                existing.endedAt.atDatabasePrecision() != dto.endedAt.atDatabasePrecision() ||
+                existing.activeSeconds != dto.activeSeconds -> SessionSource.MANUAL
+            else -> existing.source
+        }
         val session = existing ?: ReadingSession(
             id = dto.id, userId = userId, bookId = dto.bookId, startedAt = dto.startedAt, endedAt = dto.endedAt,
-            activeSeconds = dto.activeSeconds, startPage = dto.startPage, endPage = dto.endPage, source = dto.source,
+            activeSeconds = dto.activeSeconds, startPage = dto.startPage, endPage = dto.endPage, source = storedSource,
             deleted = dto.deleted, createdAt = dto.createdAt,
         )
         session.apply {
@@ -69,7 +78,7 @@ class RecordService(
             activeSeconds = dto.activeSeconds
             startPage = dto.startPage
             endPage = dto.endPage
-            source = dto.source
+            source = storedSource
             deleted = dto.deleted
         }
         return SessionDto(sessions.save(session))
@@ -133,4 +142,7 @@ class RecordService(
         if (book.userId != userId) throw ApiException.forbidden()
         return book
     }
+
+    // NFR-05: timestamp(6)의 마이크로초 반올림 때문에 같은 요청을 시간 수정으로 오인하지 않는다.
+    private fun Instant.atDatabasePrecision(): Instant = plusNanos(500).truncatedTo(ChronoUnit.MICROS)
 }
