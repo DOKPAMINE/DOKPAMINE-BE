@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: dokpamine-be
+  profiles:
+    default: local
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+server:
+  port: 8080
+
+dokpamine:
+  jwt:
+    # 운영에서는 반드시 DOKPAMINE_JWT_SECRET 환경 변수로 32바이트 이상 값을 넣는다.
+    secret: ${DOKPAMINE_JWT_SECRET:local-dev-secret-change-me-0123456789abcdef}
+    ttl: 14d
+  catalog:
+    # 조회 순서: 알라딘(키 필요, 국내 도서 정확도 최고) → Google Books(키 필요) → Open Library(키 불필요).
+    # 키가 없는 소스는 건너뛴다. 국내 도서 품질을 위해 알라딘 TTB 키를 꼭 넣는 걸 권장한다.
+    aladin-ttb-key: ${ALADIN_TTB_KEY:}
+    google-books-key: ${GOOGLE_BOOKS_KEY:}
+    timeout: 4s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  datasource:
+    url: jdbc:h2:file:./data/dokpamine;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/dokpamine}
+    username: ${DB_USERNAME:dokpamine}
+    password: ${DB_PASSWORD:dokpamine}
