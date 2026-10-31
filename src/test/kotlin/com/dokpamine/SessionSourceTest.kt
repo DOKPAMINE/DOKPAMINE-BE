@@ -134,6 +134,25 @@ class SessionSourceTest {
     }
 
     @Test
+    fun `시간이 그대로인 TIMER 세션에 MANUAL을 보내면 MANUAL로 저장되고 랭킹에서 빠진다 (T09)`() {
+        val token = signup()
+        val original = session(putBook(token))
+        mvc.patch("/api/me") {
+            bearer(token)
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"rankingOptIn":true}"""
+        }.andExpect { status { isOk() } }
+
+        assertEquals("TIMER", putSession(token, original).path("source").asString())
+        assertEquals(600, myRanking(token).single().path("seconds").asInt())
+
+        val modified = original.copy(source = SessionSource.MANUAL)
+        assertEquals("MANUAL", putSession(token, modified).path("source").asString())
+        assertEquals("MANUAL", snapshotSessions(token).single().path("source").asString())
+        assertEquals(0, myRanking(token).size)
+    }
+
+    @Test
     fun `TIMER 세션의 페이지만 바꾸면 TIMER로 남는다 (T09)`() {
         val token = signup()
         val original = session(putBook(token))
