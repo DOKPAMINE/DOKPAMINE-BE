@@ -11,8 +11,12 @@ import com.dokpamine.record.UserBookRepository
 import com.dokpamine.record.Visibility
 import com.dokpamine.user.User
 import com.dokpamine.user.UserRepository
+import jakarta.persistence.EntityManager
+import org.hibernate.SessionFactory
+import org.hibernate.stat.Statistics
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -38,6 +42,7 @@ class BookReviewSearchTest {
     @Autowired lateinit var books: UserBookRepository
     @Autowired lateinit var reviews: ReviewRepository
     @Autowired lateinit var likes: ReviewLikeRepository
+    @Autowired lateinit var entityManager: EntityManager
 
     private val now = Instant.parse("2026-11-01T12:00:00Z")
 
@@ -156,6 +161,59 @@ class BookReviewSearchTest {
         // 비공개 제목이 같은 ISBN의 공개 감상을 검색에 걸리게 해서도 안 된다.
         assertEquals(0, search(me, "숨긴 책").size())
         assertEquals(1, search(me, "Visible").size())
+    }
+
+    @Test
+    fun `검색은 최신 20개 묶음과 묶음마다 최신 감상 100개까지만 반환한다 (FR-16)`() {
+        val me = user()
+        val popular = book(me, "상한 검색", author = "인기 저자")
+        val popularReviews = (0..100).map { review(popular, now.plusSeconds(it.toLong())) }
+        val otherReviews = (0..20).map { index ->
+            review(book(me, "상한 검색", author = "저자 $index"), now.minusSeconds(index + 1L))
+        }
+
+        val groups = search(me, "상한 검색")
+        assertEquals(20, groups.size())
+        assertEquals(popularReviews.reversed().take(100).map { it.id.toString() }, groups[0]["reviews"].toList().map { it["id"].asString() })
+        assertEquals(otherReviews.take(19).map { it.id.toString() }, groups.toList().drop(1).map { it["reviews"][0]["id"].asString() })
+    }
+
+    @Test
+    fun `감상 수와 무관하게 좋아요 수와 내 좋아요를 두 쿼리로 조회한다 (FR-16)`() {
+        val me = user()
+        val other = user()
+        val book = book(other, "배치 좋아요")
+        val entries = (0..29).map { review(book, now.minusSeconds(it.toLong())) }
+        entries.forEachIndexed { index, review ->
+            likes.save(ReviewLike(ReviewLikeId(review.id, other.id)))
+            if (index % 2 == 0) likes.save(ReviewLike(ReviewLikeId(review.id, me.id)))
+        }
+        entityManager.flush()
+        entityManager.clear()
+        val statistics: Statistics = entityManager.entityManagerFactory.unwrap(SessionFactory::class.java).statistics
+        val wasEnabled = statistics.isStatisticsEnabled
+        statistics.isStatisticsEnabled = true
+        statistics.clear()
+        try {
+            val items = search(me, "배치 좋아요")[0]["reviews"].toList()
+            assertEquals(30, items.size)
+            items.forEachIndexed { index, item ->
+                assertEquals(if (index % 2 == 0) 2 else 1, item["likeCount"].asInt())
+                assertEquals(index % 2 == 0, item["likedByMe"].asBoolean())
+            }
+            assertEquals(2, statistics.queries.count { it.contains("ReviewLike") })
+            assertTrue(statistics.prepareStatementCount <= 8, "검색 SQL 수: ${statistics.prepareStatementCount}")
+        } finally {
+            statistics.isStatisticsEnabled = wasEnabled
+        }
+    }
+
+    @Test
+    fun `검색어의 LIKE 특수문자는 일반 제목 문자로 검색한다 (FR-16)`() {
+        val me = user()
+        review(book(me, "100%_! 책"), now)
+        review(book(me, "100퍼센트 다른 책"), now)
+        assertEquals(1, search(me, "100%_!").size())
     }
 
     @Test

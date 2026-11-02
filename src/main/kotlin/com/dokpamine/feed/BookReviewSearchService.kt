@@ -2,12 +2,10 @@ package com.dokpamine.feed
 
 import com.dokpamine.catalog.Isbn
 import com.dokpamine.common.ApiException
-import com.dokpamine.record.Review
-import com.dokpamine.record.ReviewRepository
-import com.dokpamine.record.UserBook
 import com.dokpamine.record.UserBookRepository
 import com.dokpamine.record.Visibility
 import com.dokpamine.user.UserRepository
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -17,31 +15,46 @@ import java.util.UUID
 
 @Service
 class BookReviewSearchService(
-    private val reviews: ReviewRepository,
+    private val searchBooks: BookReviewSearchRepository,
     private val books: UserBookRepository,
     private val users: UserRepository,
-    private val likes: ReviewLikeRepository,
+    private val likes: FeedLikeReadRepository,
 ) {
     @Transactional(readOnly = true)
     fun search(query: String, me: UUID): List<BookReviewGroup> {
         val normalizedQuery = normalize(query)
         if (normalizedQuery.isEmpty()) throw ApiException.badRequest("검색어를 입력해 주세요.")
 
-        val publicReviews = reviews.findAllByVisibilityAndDeletedFalseOrderByPublishedAtDesc(Visibility.PUBLIC)
-            .sortedWith(compareByDescending<Review> { it.publishedAt ?: Instant.MIN }.thenBy { it.id.toString() })
-        val publicBooks = books.findAllById(publicReviews.map { it.bookId }.distinct())
-            .filterNot { it.deleted }
-            .associateBy { it.id }
+        // LIKE는 공백 사이를 넓게 찾고 정규화한 제목으로 재검증해 기존 검색 의미를 유지한다.
+        val pattern = normalizedQuery.split(' ').joinToString("%", "%", "%") { token ->
+            token.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        }
+        val matchingKeys = searchBooks.findTitleCandidates(pattern, Visibility.PUBLIC)
+            .filter { normalize(it.title).contains(normalizedQuery) }
+            .map { bookKey(it.isbn, it.title, it.author) }.toSet()
+        if (matchingKeys.isEmpty()) return emptyList()
 
-        // FR-16: 먼저 묶어야 같은 ISBN의 제목 표기가 달라도 모든 공개 감상을 함께 반환한다.
-        val matches = publicReviews.mapNotNull { review -> publicBooks[review.bookId]?.let { review to it } }
-            .groupBy { (_, book) -> bookKey(book) }
-            .filterValues { entries -> entries.any { (_, book) -> normalize(book.title).contains(normalizedQuery) } }
-        val authors = users.findAllById(matches.values.flatten().map { it.first.userId }.distinct())
+        val matches = searchBooks.findPublicBookSummaries()
+            .filter { bookKey(it.isbn, it.title, it.author) in matchingKeys }
+            .groupBy { bookKey(it.isbn, it.title, it.author) }
+            .map { (key, entries) -> key to entries.sortedWith(latestFirst) }
+            .sortedWith { left, right -> latestFirst.compare(left.second.first(), right.second.first()) }
+            .take(20)
+            .associate { (key, entries) ->
+                key to searchBooks.findPublicReviews(entries.map { UUID.fromString(it.id) }, Visibility.PUBLIC, PageRequest.of(0, 100))
+            }
+        val selected = matches.values.flatten()
+        if (selected.isEmpty()) return emptyList()
+        val publicBooks = books.findAllById(selected.map { it.bookId }.distinct()).filterNot { it.deleted }.associateBy { it.id }
+        val authors = users.findAllById(selected.map { it.userId }.distinct())
             .associateBy { it.id }
+        val reviewIds = selected.map { it.id }
+        val likeCounts = likes.countByReviewIds(reviewIds).associate { it.reviewId to it.likeCount }
+        val likedIds = likes.findLikedReviewIds(me, reviewIds).toSet()
 
         return matches.mapNotNull { (key, entries) ->
-            val items = entries.mapNotNull { (review, book) ->
+            val items = entries.mapNotNull { review ->
+                val book = publicBooks[review.bookId] ?: return@mapNotNull null
                 val author = authors[review.userId] ?: return@mapNotNull null
                 FeedItem(
                     id = review.id,
@@ -52,28 +65,30 @@ class BookReviewSearchService(
                     oneLine = review.oneLine,
                     body = review.body,
                     publishedAt = review.publishedAt,
-                    likeCount = likes.countByIdReviewId(review.id),
-                    likedByMe = likes.existsById(ReviewLikeId(review.id, me)),
+                    likeCount = likeCounts[review.id] ?: 0,
+                    likedByMe = review.id in likedIds,
                     mine = review.userId == me,
                 )
             }
             val latest = items.firstOrNull() ?: return@mapNotNull null
-            BookReviewGroup(key, latest.bookTitle, latest.bookAuthor, isbn(entries.first().second), items)
+            BookReviewGroup(key, latest.bookTitle, latest.bookAuthor, key.takeIf { it.startsWith("isbn:") }?.removePrefix("isbn:"), items)
         }
     }
 
-    private fun bookKey(book: UserBook): String {
-        isbn(book)?.let { return "isbn:$it" }
-        val titleAndAuthor = "${normalize(book.title)}\n${normalize(book.author)}"
+    private fun bookKey(rawIsbn: String?, title: String, author: String): String {
+        isbn(rawIsbn)?.let { return "isbn:$it" }
+        val titleAndAuthor = "${normalize(title)}\n${normalize(author)}"
         return "text:" + Base64.getUrlEncoder().withoutPadding().encodeToString(titleAndAuthor.toByteArray(Charsets.UTF_8))
     }
 
-    private fun isbn(book: UserBook): String? = book.isbn?.trim()?.takeIf { it.isNotEmpty() }
+    private fun isbn(raw: String?): String? = raw?.trim()?.takeIf { it.isNotEmpty() }
         ?.let { Isbn.normalize(it) ?: it }
 
     private fun normalize(value: String): String = whitespace.replace(value, " ").trim().lowercase(Locale.ROOT)
 
     private companion object {
         val whitespace = Regex("[\\s\\p{Z}]+")
+        val latestFirst = compareByDescending<PublicBookSummary> { it.latestPublishedAt?.toInstant() ?: Instant.MIN }
+            .thenBy { it.latestReviewId }
     }
 }
