@@ -94,14 +94,20 @@ BookReviewGroup {bookKey, bookTitle, bookAuthor, isbn?, reviews: FeedItem[]}
 - `query` 누락·빈 문자열·공백만 입력하면 `400 {"code":"BAD_REQUEST","message":"검색어를 입력해 주세요."}`이다.
 - 토큰 누락·만료·무효는 기존 인증 규칙대로 `401`이다.
 
-## 독서왕 랭킹 (PRD L01~L05)
+## 독서왕 랭킹 (FR-15, S-73~S-75)
 
 | Method | Path | 응답 |
 |---|---|---|
-| GET | `/api/ranking/weekly?weekStart=YYYY-MM-DD` | `{weekStart, participating, entries: [{rank, userId, nickname, seconds, me}]}` |
+| GET | `/api/ranking/weekly?weekStart=YYYY-MM-DD` | `{weekStart, participating, top: RankingEntry[], around: RankingEntry[]}` |
+
+`RankingEntry = {rank, userId, nickname, seconds, me}`. `rank`는 전체 참여자 중 순위(1부터 연속), `seconds`는 상한 적용 후 주간 초, `me`는 요청자 여부다. AOS 영향 있음: 기존 `entries`를 `top`과 `around`로 대체하며 AOS 8단계 S-73에서 이 계약을 사용한다.
 
 집계 기준은 다음과 같다.
-- 기간: KST 월요일 00:00부터 다음 월요일 00:00 직전까지
-- 대상: `rankingOptIn` 사용자의 TIMER 세션만
-- 상한: 하루 180분
-- 동점: 1, 2, 2, 4 방식
+- 기간: KST 월요일 00:00부터 다음 월요일 00:00 미만에 **시작한** 세션이다. `weekStart` 생략 시 이번 주, 지정 시 해당 날짜가 속한 주 월요일로 정규화한다.
+- 대상: 현재 `rankingOptIn=true`인 사용자의 삭제되지 않은 TIMER 세션만 집계한다. MANUAL·삭제 세션·비참여자는 제외하고 참여 중단은 다음 조회부터 즉시 반영한다. 주간 인정 시간이 0초이면 순위에서 제외한다.
+- 상한: 세션 시작일(KST)별 하루 180분(10,800초)이다. 세션을 종료 시각 오름차순으로 더하며 일별 상한을 넘는 시간은 버린다.
+- **도달 시각**: 상한 적용 후 주간 누적 시간을 마지막으로 늘린 세션의 `endedAt`이다. 일시정지 구간 정보가 없으므로 세션 중간 시각은 추정하지 않는다. 상한 이후 세션·0초 세션은 시각을 늦추지 않으며 서버 수신·생성 시각은 사용하지 않는다.
+- 동점: 주간 초 내림차순 → 도달 시각 오름차순 → 사용자 UUID 문자열 오름차순이다. 공동 순위 없이 1, 2, 3, …으로 매긴다. A 300분, B 200분, C 200분이고 B가 먼저 도달했으면 A 1위, B 2위, C 3위다.
+- `top`: 전체 1~30위(참여자가 적으면 존재하는 순위만)다.
+- `around`: 본인이 31위 이하일 때 본인 포함 30명이다. 원칙적으로 위 15명·아래 14명이며 끝에서 부족한 인원은 반대쪽에서 채운다. `top`과 겹칠 수 있고, 각 항목의 `rank`는 전체 순위를 유지한다. 45명 중 본인이 38위면 16~45위를 반환한다.
+- 본인이 30위 이내이거나 순위가 없으면 `around=[]`다. `participating`은 요청자의 참여 동의 상태이며 비참여자는 `false`, `around=[]`지만 `top`은 조회할 수 있다. 참여에 동의했어도 주간 TIMER 시간이 0초라면 `participating=true`, `around=[]`다.
