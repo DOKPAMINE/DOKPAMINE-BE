@@ -139,8 +139,9 @@ class BookLookupService(
         // FR-01: 공식 ISBN 서지정보 안내의 문자열 필드(PAGE·KDC·TITLE_URL)를 사용한다.
         // https://www.nl.go.kr/NL/contents/N31101030500.do
         val body = fetcher.fetch("nlk", isbn) ?: return null
+        // isbn 파라미터는 우절단 검색이라 EA_ISBN이 요청과 같은 문서만 채택한다.
         val item = jsonMapper.readTree(body).path("docs").firstOrNull {
-            it.text("EA_ISBN") == isbn
+            it.text("EA_ISBN")?.let(Isbn::normalize) == isbn
         } ?: return null
         return CatalogBook(
             isbn = isbn,
@@ -157,11 +158,12 @@ class BookLookupService(
     }
 
     private fun kakao(isbn: String): CatalogBook? {
-        // FR-01: ISBN10·ISBN13이 공백으로 구분되므로 요청 ISBN13과 정확히 일치하는 문서만 채택한다.
+        // FR-01: isbn은 ISBN10·ISBN13 중 하나 이상이고 둘 다 있으면 공백으로 구분된다.
+        // ISBN10만 있는 문서도 있으므로 ISBN13으로 정규화한 값이 요청과 같은 문서만 채택한다.
         // https://developers.kakao.com/docs/latest/ko/daum-search/dev-guide#search-book
         val body = fetcher.fetch("kakao", isbn) ?: return null
-        val item = jsonMapper.readTree(body).path("documents").firstOrNull {
-            isbn in (it.text("isbn")?.split(Regex("\\s+")) ?: emptyList())
+        val item = jsonMapper.readTree(body).path("documents").firstOrNull { doc ->
+            doc.text("isbn")?.split(Regex("\\s+"))?.any { Isbn.normalize(it) == isbn } == true
         } ?: return null
         return CatalogBook(
             isbn = isbn,

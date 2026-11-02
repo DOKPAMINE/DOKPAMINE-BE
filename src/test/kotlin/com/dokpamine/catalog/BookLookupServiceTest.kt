@@ -71,10 +71,25 @@ class BookLookupServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["9788996991342", "8937460440", "97889374604490", ""])
+    @ValueSource(strings = ["9788996991342", "8996991341", "97889374604490", ""])
     fun `FR-01 카카오 응답에 요청 ISBN13이 없으면 채택하지 않는다`(responseIsbn: String) {
         val body = json.writeValueAsString(mapOf("documents" to listOf(mapOf("isbn" to responseIsbn, "title" to "다른 책"))))
         assertNull(service(FakeFetcher(mapOf("kakao" to body))).lookup(isbn))
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["8937460440", " 9788937460449", "8937460440 ", "89-374-6044-0"])
+    fun `FR-01 카카오 ISBN이 한쪽만 있어도 같은 책이면 채택한다`(responseIsbn: String) {
+        val body = json.writeValueAsString(mapOf("documents" to listOf(mapOf("isbn" to responseIsbn, "title" to "카카오 도서"))))
+        assertEquals("카카오 도서", service(FakeFetcher(mapOf("kakao" to body))).lookup(isbn)?.title)
+    }
+
+    @Test
+    fun `FR-01 국립중앙도서관 EA_ISBN은 하이픈을 빼고 요청 ISBN과 비교한다`() {
+        val body = nlk().replace("\"$isbn\"", "\"978-89-374-6044-9\"")
+        assertEquals("국내 도서", service(FakeFetcher(mapOf("nlk" to body))).lookup(isbn)?.title)
+        val other = nlk().replace("\"$isbn\"", "\"9788996991342\"")
+        assertNull(service(FakeFetcher(mapOf("nlk" to other))).lookup(isbn))
     }
 
     @Test
