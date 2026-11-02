@@ -214,11 +214,13 @@ class BookReviewSearchTest {
     }
 
     @Test
-    fun `감상 수와 무관하게 좋아요 수와 내 좋아요를 두 쿼리로 조회한다 (FR-16)`() {
+    fun `여러 책 묶음에서도 좋아요를 두 번만 조회하고 SQL 실행 수 상한을 유지한다 (FR-16)`() {
         val me = user()
         val other = user()
-        val book = book(other, "배치 좋아요")
-        val entries = (0..29).map { review(book, now.minusSeconds(it.toLong())) }
+        val entries = (0..2).flatMap { group ->
+            val book = book(other, "배치 좋아요 $group")
+            (0..29).map { review(book, now.minusSeconds(it.toLong())) }
+        }
         entries.forEachIndexed { index, review ->
             likes.save(ReviewLike(ReviewLikeId(review.id, other.id)))
             if (index % 2 == 0) likes.save(ReviewLike(ReviewLikeId(review.id, me.id)))
@@ -229,16 +231,30 @@ class BookReviewSearchTest {
         val statistics: Statistics = sessionFactory.statistics
         val wasEnabled = statistics.isStatisticsEnabled
         statistics.isStatisticsEnabled = true
-        statistics.clear()
         try {
-            val items = search(me, "배치 좋아요")[0]["reviews"].toList()
-            assertEquals(30, items.size)
-            items.forEachIndexed { index, item ->
-                assertEquals(if (index % 2 == 0) 2 else 1, item["likeCount"].asInt())
-                assertEquals(index % 2 == 0, item["likedByMe"].asBoolean())
+            listOf("배치 좋아요 0" to 1, "배치 좋아요" to 3).forEach { (query, groupCount) ->
+                entityManager.clear()
+                statistics.clear()
+                val groups = search(me, query).toList()
+                assertEquals(groupCount, groups.size)
+                groups.forEach { group ->
+                    val items = group["reviews"].toList()
+                    assertEquals(30, items.size)
+                    items.forEachIndexed { index, item ->
+                        assertEquals(if (index % 2 == 0) 2 else 1, item["likeCount"].asInt())
+                        assertEquals(index % 2 == 0, item["likedByMe"].asBoolean())
+                    }
+                }
+                val queries: Array<String> = statistics.queries
+                val likeExecutions = queries.filter { it.contains("ReviewLike") }
+                    .sumOf { statistics.getQueryStatistics(it).executionCount }
+                assertEquals(2L, likeExecutions, "좋아요 쿼리 실행 수: $query")
+                val executions = queries.sumOf { statistics.getQueryStatistics(it).executionCount }
+                // 후보·요약 2회, 묶음별 감상 조회, 책·사용자·좋아요 배치 조회 4회다.
+                val limit = groupCount + 6L
+                assertTrue(executions <= limit, "${groupCount}개 묶음 쿼리 실행 수: $executions")
+                assertTrue(statistics.prepareStatementCount <= limit, "${groupCount}개 묶음 SQL 수: ${statistics.prepareStatementCount}")
             }
-            assertEquals(2, statistics.queries.count { it.contains("ReviewLike") })
-            assertTrue(statistics.prepareStatementCount <= 8, "검색 SQL 수: ${statistics.prepareStatementCount}")
         } finally {
             statistics.isStatisticsEnabled = wasEnabled
         }
