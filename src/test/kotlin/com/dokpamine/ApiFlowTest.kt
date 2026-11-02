@@ -90,7 +90,7 @@ class ApiFlowTest {
     }
 
     @Test
-    fun `랭킹은 참여자만, 하루 180분까지만 집계한다`() {
+    fun `랭킹은 참여자만 하루 180분까지만 집계한다 (FR-15)`() {
         val a = signup()
         val bookId = putBook(a)
         mvc.patch("/api/me") {
@@ -105,7 +105,7 @@ class ApiFlowTest {
         putSession(a, UUID.randomUUID(), bookId, mondayNoon, 200 * 60)
 
         val ranking = json.readTree(mvc.get("/api/ranking/weekly") { bearer(a) }.body())
-        val mine = ranking.path("entries").first { it.path("me").asBoolean() }
+        val mine = ranking.path("top").first { it.path("me").asBoolean() }
         assertEquals(180L * 60, mine.path("seconds").asLong())
     }
 

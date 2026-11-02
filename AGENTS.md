@@ -1,7 +1,7 @@
 # DOKPAMINE-BE: 에이전트 작업 규칙
 
 독파민(독서 기록 앱)의 백엔드다. Android 앱(`DOKPAMINE-AOS`)이 유일한 클라이언트다.
-요구사항 ID(FR-xx, NFR-xx, UC-xx)는 팀의 요구사항 분석서를, 화면 ID(H01, B01 …)는 Figma "독파민 · 75 화면"을 따른다.
+요구사항 ID(FR-xx, NFR-xx, UC-xx)와 화면 번호(S-xx)는 DOKPAMINE-DOCS의 PRD.md v1.0을 따른다. Figma는 `v1.0` 페이지가 기준이다.
 
 **브랜치, 커밋, Issue, PR 규칙은 `CONTRIBUTING.md`를 따른다.** 특히 커밋은 Conventional Commits 형식(`feat(record): …`)에 `Refs #이슈번호`를 붙이고, 커밋 하나에는 논리적으로 하나의 변경만 담는다. 리뷰 워커는 리뷰에서 고친 내용을 별도 커밋으로 남긴다.
 
@@ -26,7 +26,7 @@ src/main/kotlin/com/dokpamine/
   common/   ApiException + GlobalExceptionHandler  → {code, message}
   user/     User, 회원가입·로그인·내 정보 (AuthController)
   record/   UserBook·ReadingSession·Review·Quote 엔티티, 멱등 upsert (RecordService), snapshot
-  catalog/  ISBN 조회 (알라딘 → Google Books → Open Library), ISBN 정규화, 장르 매핑
+  catalog/  ISBN 조회 (국립중앙도서관 → 카카오 → Google Books → Open Library), ISBN 정규화, KDC·장르 매핑
   feed/     공개 감상 피드, 좋아요 (ReviewLike)
   ranking/  주간 랭킹 집계
 src/main/resources/db/migration/   Flyway SQL (V1__init.sql …)
@@ -39,7 +39,7 @@ docs/API.md                        API 계약: 엔드포인트를 바꾸면 반�
 3. **개인 기록 PUT은 멱등을 유지한다.** 클라이언트 UUID가 PK이고, 재전송해도 1건만 남아야 한다(NFR-05). 소유자 검사(403)를 빼지 않는다.
 4. **비공개 권한은 서버에서 강제한다.** 다른 사용자의 비공개 감상은 목록·상세 모두 404다(NFR-09). 클라이언트에서 숨기는 방식에 의존하지 않는다.
 5. 사용자에게 보이는 오류 메시지는 한국어 존댓말 한 문장으로 쓴다(`ApiException`).
-6. 외부 API 키(알라딘, Google)와 JWT 시크릿은 환경 변수로만 받는다. 키를 커밋하지 않는다.
+6. 외부 API 키(국립중앙도서관, 카카오, Google)와 JWT 시크릿은 환경 변수로만 받는다. 키를 커밋하지 않는다.
 7. 새 기능에는 `src/test`에 MockMvc 통합 테스트를 추가한다. 테스트 이름은 요구사항 ID를 넣은 한국어 문장으로 쓴다.
 
 ## 코드 스타일

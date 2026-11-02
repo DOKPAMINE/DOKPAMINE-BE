@@ -27,7 +27,9 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 | GET | `/api/catalog/genres` | `["소설","SF",…,"기타"]` |
 
 `CatalogBook = {isbn, title?, author?, publisher?, totalPages?, genre?, coverUrl?, source}`. 일부 필드가 비어 있을 수 있으며, 앱은 빈 칸을 사용자 입력으로 채운다.
-조회 순서는 알라딘(`ALADIN_TTB_KEY`) → Google Books(`GOOGLE_BOOKS_KEY`) → Open Library(키 불필요)다.
+조회 순서는 국립중앙도서관(`NLK_CERT_KEY`, 쪽수·KDC 우선) → 카카오(`KAKAO_REST_API_KEY`, ISBN 조회로 제목·저자·출판사·표지 보완) → Google Books(`GOOGLE_BOOKS_KEY`) → Open Library(키 불필요)다.
+키가 비어 있는 조회처는 호출하지 않고, 앞 결과의 빈 칸만 뒤 결과로 채운다. 외부 조회 실패 시에도 다음 조회처로 넘어간다.
+`source` 가능 값은 `nlk|kakao|google|openlibrary`이며, 병합에 사용된 첫 결과의 값을 유지한다.
 
 ## 개인 기록 동기화 (NFR-04, NFR-05)
 
@@ -58,11 +60,12 @@ ReviewDto  {id, bookId, oneLine?(≤100), body?(≤5000), visibility: PRIVATE|PU
 QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, updatedAt}
 ```
 
-## 라운지: 공개 감상 (FR-08, FR-09)
+## 라운지: 공개 감상 (FR-08, FR-09, FR-16)
 
 | Method | Path | 응답 |
 |---|---|---|
 | GET | `/api/feed` | `FeedItem[]` (공개 감상 최신순 100개) |
+| GET | `/api/feed/books?query=데미안` | `BookReviewGroup[]` (책 이름 검색, 묶음별 공개 감상 최신순) |
 | GET | `/api/feed/{reviewId}` | `FeedItem` · 비공개/삭제/없음은 모두 404 |
 | POST | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: true}` (중복 요청해도 1회) |
 | DELETE | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: false}` |
@@ -70,14 +73,42 @@ QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, 
 `FeedItem = {id, nickname, bookTitle, bookAuthor, genre, oneLine?, body?, publishedAt?, likeCount, likedByMe, mine}`.
 공개 응답에는 닉네임, 책 제목·저자, 감상만 담는다. 독서 시간, 사진, 보관 위치는 노출하지 않는다.
 
-## 독서왕 랭킹 (PRD L01~L05)
+### 책별 공개 감상 검색 (FR-16, NFR-09)
+
+`GET /api/feed/books`는 인증이 필요하며 `query`에 책 제목의 일부를 전달한다(URL 인코딩).
+검색어와 제목은 앞뒤 공백 제거, 연속 공백(탭·줄바꿈·유니코드 공백 포함)을 한 칸으로 축약하고 대소문자를 무시하여 비교한다.
+검색 대상은 서버에 저장된 책이며 외부 도서 조회를 호출하지 않는다.
+공개 감상이 있는 책 중 제목 LIKE 조건을 통과한 후보를 최신 공개 감상 시각 내림차순(시각이 없으면 마지막), 동점은 책 UUID 문자열 오름차순으로 최대 500건 읽고 제목을 정규화해 재검증하므로, 후보 상한을 초과한 책은 검색에서 제외될 수 있다. 이후 요약 조회도 일치 ISBN(ISBN-10/13 사본 포함) 또는 제목 LIKE 조건에 해당하는 책으로 제한한다.
+
+```text
+BookReviewGroup {bookKey, bookTitle, bookAuthor, isbn?, reviews: FeedItem[]}
+```
+
+- ISBN이 있으면 앞뒤 공백을 제거하고 유효한 ISBN-10/13을 ISBN-13으로 정규화해 같은 책끼리 묶는다. 정규화할 수 없는 ISBN은 공백 제거 값 그대로 사용한다. 키는 `isbn:<ISBN>`이며 응답의 `isbn`도 이 값을 사용한다.
+- ISBN이 null 또는 공백이면 정규화한 제목과 저자가 **모두** 같은 책끼리 묶는다. 키는 `text:<Base64URL>`이며, 정규화한 제목 + 줄바꿈 + 저자의 UTF-8 바이트를 패딩 없이 인코딩한다.
+- ISBN이 다른 책, ISBN이 있는 책과 없는 책은 제목·저자가 같아도 별도 묶음이다. 앱은 `bookKey`를 묶음 식별자로 사용한다.
+- 묶음의 공개 감상에 연결된 책 제목 중 하나라도 검색어와 일치하면 그 묶음을 반환한다. ISBN이 같고 제목 표기가 다른 감상도 포함한다.
+- `PUBLIC`이고 삭제되지 않은 감상만 포함하며, 삭제된 책의 감상도 제외한다. 본인의 비공개 감상 역시 포함하지 않는다.
+- `reviews`는 `publishedAt` 내림차순(시각이 없으면 마지막), 동점은 감상 UUID 문자열 오름차순이다. 묶음도 가장 최신 감상의 시각과 UUID 문자열 순서이며, 대표 제목·저자는 그 감상의 책에서 가져온다.
+- 각 감상은 기존 `FeedItem`과 같은 공개 필드만 담는다. 검색 결과는 위 정렬 순서대로 최대 20개 묶음이며, 묶음마다 최신 감상 최대 100개를 반환한다.
+- 일치하는 공개 감상이 없으면 `200 []`이다.
+- `query` 누락·빈 문자열·공백만 입력하면 `400 {"code":"BAD_REQUEST","message":"검색어를 입력해 주세요."}`이다.
+- 토큰 누락·만료·무효는 기존 인증 규칙대로 `401`이다.
+
+## 독서왕 랭킹 (FR-15, S-73~S-75)
 
 | Method | Path | 응답 |
 |---|---|---|
-| GET | `/api/ranking/weekly?weekStart=YYYY-MM-DD` | `{weekStart, participating, entries: [{rank, userId, nickname, seconds, me}]}` |
+| GET | `/api/ranking/weekly?weekStart=YYYY-MM-DD` | `{weekStart, participating, top: RankingEntry[], around: RankingEntry[]}` |
+
+`RankingEntry = {rank, userId, nickname, seconds, me}`. `rank`는 전체 참여자 중 순위(1부터 연속), `seconds`는 상한 적용 후 주간 초, `me`는 요청자 여부다. AOS 영향 있음: 기존 `entries`를 `top`과 `around`로 대체하며 AOS 8단계 S-73에서 이 계약을 사용한다.
 
 집계 기준은 다음과 같다.
-- 기간: KST 월요일 00:00부터 다음 월요일 00:00 직전까지
-- 대상: `rankingOptIn` 사용자의 TIMER 세션만
-- 상한: 하루 180분
-- 동점: 1, 2, 2, 4 방식
+- 기간: KST 월요일 00:00부터 다음 월요일 00:00 미만에 **시작한** 세션이다. `weekStart` 생략 시 이번 주, 지정 시 해당 날짜가 속한 주 월요일로 정규화한다.
+- 대상: 현재 `rankingOptIn=true`인 사용자의 삭제되지 않은 TIMER 세션만 집계한다. MANUAL·삭제 세션·비참여자는 제외하고 참여 중단은 다음 조회부터 즉시 반영한다. 주간 인정 시간이 0초이면 순위에서 제외한다.
+- 상한: 세션 시작일(KST)별 하루 180분(10,800초)이다. 세션을 종료 시각 오름차순으로 더하며 일별 상한을 넘는 시간은 버린다.
+- **도달 시각**: 상한 적용 후 주간 누적 시간을 마지막으로 늘린 세션의 `endedAt`이다. 일시정지 구간 정보가 없으므로 세션 중간 시각은 추정하지 않는다. 상한 이후 세션·0초 세션은 시각을 늦추지 않으며 서버 수신·생성 시각은 사용하지 않는다.
+- 동점: 주간 초 내림차순 → 도달 시각 오름차순 → 사용자 UUID 문자열 오름차순이다. 공동 순위 없이 1, 2, 3, …으로 매긴다. A 300분, B 200분, C 200분이고 B가 먼저 도달했으면 A 1위, B 2위, C 3위다.
+- `top`: 전체 1~30위(참여자가 적으면 존재하는 순위만)다.
+- `around`: 본인이 31위 이하일 때 본인 포함 30명이다. 원칙적으로 위 15명·아래 14명이며 끝에서 부족한 인원은 반대쪽에서 채운다. `top`과 겹칠 수 있고, 각 항목의 `rank`는 전체 순위를 유지한다. 45명 중 본인이 38위면 16~45위를 반환한다.
+- 본인이 30위 이내이거나 순위가 없으면 `around=[]`다. `participating`은 요청자의 참여 동의 상태이며 비참여자는 `false`, `around=[]`지만 `top`은 조회할 수 있다. 참여에 동의했어도 주간 TIMER 시간이 0초라면 `participating=true`, `around=[]`다.
