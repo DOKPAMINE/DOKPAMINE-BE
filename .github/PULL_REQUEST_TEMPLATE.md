@@ -2,13 +2,13 @@
 Closes #
 
 ## 변경 사항
-<!-- 무엇을, 왜 바꿨는지. 요구사항 ID(FR/NFR/화면 ID)가 있으면 함께 적어 주세요. -->
+<!-- 무엇을, 왜 바꿨는지. 요구사항 ID(FR/NFR/화면 번호 S-xx)가 있으면 함께 적어 주세요. -->
 -
 
 ## 테스트
 <!-- 실행한 명령과 결과. 앱이면 확인한 화면이나 시나리오도 적어 주세요. -->
 - [ ] BE: `./gradlew test` 통과
-- [ ] AOS: `./gradlew :app:testDebugUnitTest` 통과
+- [ ] AOS: `npm run typecheck`·`npm run lint`·`npm test -- --ci` 통과
 - 수동 확인:
 
 ## API 계약
