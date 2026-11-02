@@ -4,6 +4,7 @@ import com.dokpamine.common.ApiException
 import com.dokpamine.config.CatalogProperties
 import org.slf4j.LoggerFactory
 import org.springframework.http.client.JdkClientHttpRequestFactory
+import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -29,6 +30,34 @@ data class CatalogBook(
 object Genres {
     val ALL = listOf("소설", "SF", "시/에세이", "인문", "역사", "사회/정치", "경제/경영", "자기계발", "과학", "예술", "만화", "기타")
 
+    fun fromKdc(kdc: String?): String? {
+        val value = kdc?.trim()?.takeIf { Regex("[0-9]{3}(\\.[0-9]+)?").matches(it) } ?: return null
+        val code = value.take(3).toInt()
+        return when {
+            // 국립중앙도서관 연구 p.270: 199 도덕훈·교훈의 핵심 주제는 인생훈이다.
+            // https://oak.go.kr/nl-ir/bitstream/2020.oak/388/1/국립중앙도서관%20소장자료%20디지털화%20중장기%20전략%20연구.pdf
+            code == 199 -> "자기계발"
+            code == 657 -> "만화"
+            code in 320..329 -> "경제/경영"
+            // 89x(기타 제문학)와 8x9(포르투갈 문학 등)는 셋째 자리가 형식이 아니라 언어다(예: 892.83 러시아 소설).
+            // 형식을 알 수 없으므로 null로 두어 뒤 조회처의 장르로 채운다.
+            code in 890..899 || (code in 800..899 && code % 10 == 9) -> null
+            code in 800..899 -> when (code % 10) {
+                3 -> "소설" // KDC만으로 SF 여부는 알 수 없다.
+                // 1 시, 4 수필, 6 일기·서간·기행(서점에서는 에세이로 분류)
+                1, 4, 6 -> "시/에세이"
+                // 문학의 나머지 형식(희곡·평론 등)을 소설로 오인하지 않도록 인문으로 묶는다.
+                else -> "인문"
+            }
+            code in 900..999 -> "역사"
+            code in 300..399 -> "사회/정치"
+            code in 100..299 || code in 700..799 -> "인문"
+            code in 400..599 -> "과학"
+            code in 600..699 -> "예술"
+            else -> "기타"
+        }
+    }
+
     fun fromCategory(category: String?): String? {
         if (category.isNullOrBlank()) return null
         val c = category.lowercase()
@@ -49,13 +78,12 @@ object Genres {
     }
 }
 
-@Service
-class BookLookupService(
-    private val properties: CatalogProperties,
-    private val jsonMapper: JsonMapper,
-) {
-    private val log = LoggerFactory.getLogger(javaClass)
+fun interface CatalogFetcher {
+    fun fetch(source: String, isbn: String): String?
+}
 
+@Component
+class HttpCatalogFetcher(private val properties: CatalogProperties) : CatalogFetcher {
     private val http = RestClient.builder()
         .requestFactory(
             JdkClientHttpRequestFactory(
@@ -64,11 +92,37 @@ class BookLookupService(
         )
         .build()
 
-    /** 알라딘 → Google Books → Open Library 순서로 조회하고(키 없는 소스는 건너뜀), 빈 칸은 뒤 결과로 채운다. */
+    override fun fetch(source: String, isbn: String): String? = when (source) {
+        "nlk" -> http.get().uri(
+            "https://www.nl.go.kr/seoji/SearchApi.do?cert_key={key}&result_style=json&page_no=1&page_size=1&isbn={isbn}",
+            properties.nlkCertKey, isbn,
+        )
+        "kakao" -> http.get()
+            .uri("https://dapi.kakao.com/v3/search/book?target=isbn&query={isbn}", isbn)
+            .header("Authorization", "KakaoAK ${properties.kakaoRestApiKey}")
+        "google" -> http.get().uri(
+            "https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}&key={key}", isbn, properties.googleBooksKey,
+        )
+        "openlibrary" -> http.get()
+            .uri("https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=data", isbn)
+        else -> error("지원하지 않는 도서 조회처입니다.")
+    }.retrieve().body(String::class.java)
+}
+
+@Service
+class BookLookupService(
+    private val properties: CatalogProperties,
+    private val jsonMapper: JsonMapper,
+    private val fetcher: CatalogFetcher,
+) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    /** 국립중앙도서관 → 카카오 → Google Books → Open Library 순서로 빈 칸을 채운다(키 없는 조회처는 건너뜀). */
     fun lookup(rawIsbn: String): CatalogBook? {
         val isbn = Isbn.normalize(rawIsbn) ?: throw ApiException.badRequest("올바른 ISBN 이 아니에요.")
         val results = listOfNotNull(
-            if (properties.aladinTtbKey.isNotBlank()) safe("aladin") { aladin(isbn) } else null,
+            if (properties.nlkCertKey.isNotBlank()) safe("nlk") { nlk(isbn) } else null,
+            if (properties.kakaoRestApiKey.isNotBlank()) safe("kakao") { kakao(isbn) } else null,
             if (properties.googleBooksKey.isNotBlank()) safe("google") { googleBooks(isbn) } else null,
             safe("openlibrary") { openLibrary(isbn) },
         )
@@ -85,34 +139,51 @@ class BookLookupService(
         }
     }
 
-    private fun aladin(isbn: String): CatalogBook? {
-        val body = http.get()
-            .uri(
-                "https://www.aladin.co.kr/ttb/api/ItemLookUp.aspx?ttbkey={key}&itemIdType=ISBN13&ItemId={isbn}" +
-                    "&output=js&Version=20131101&Cover=Big",
-                properties.aladinTtbKey, isbn,
-            )
-            .retrieve()
-            .body(String::class.java) ?: return null
-        val item = jsonMapper.readTree(body).path("item").path(0)
-        if (item.isMissingNode) return null
+    private fun nlk(isbn: String): CatalogBook? {
+        // FR-01: 공식 ISBN 서지정보 안내의 문자열 필드(PAGE·KDC·TITLE_URL)를 사용한다.
+        // https://www.nl.go.kr/NL/contents/N31101030500.do
+        val body = fetcher.fetch("nlk", isbn) ?: return null
+        // isbn 파라미터는 우절단 검색이라 EA_ISBN이 요청과 같은 문서만 채택한다.
+        val item = jsonMapper.readTree(body).path("docs").firstOrNull {
+            it.text("EA_ISBN")?.let(Isbn::normalize) == isbn
+        } ?: return null
+        return CatalogBook(
+            isbn = isbn,
+            title = item.text("TITLE"),
+            author = item.text("AUTHOR")?.substringBefore(';')?.substringAfter(':')?.substringBefore(',')
+                ?.trim()?.takeIf { it.isNotBlank() },
+            publisher = item.text("PUBLISHER"),
+            totalPages = item.text("PAGE")?.let { Regex("-?[0-9]+").findAll(it).lastOrNull()?.value?.toIntOrNull() }
+                ?.takeIf { it > 0 },
+            genre = Genres.fromKdc(item.text("KDC")),
+            coverUrl = item.text("TITLE_URL")?.replace("http://", "https://"),
+            source = "nlk",
+        )
+    }
+
+    private fun kakao(isbn: String): CatalogBook? {
+        // FR-01: isbn은 ISBN10·ISBN13 중 하나 이상이고 둘 다 있으면 공백으로 구분된다.
+        // ISBN10만 있는 문서도 있으므로 ISBN13으로 정규화한 값이 요청과 같은 문서만 채택한다.
+        // https://developers.kakao.com/docs/latest/ko/daum-search/dev-guide#search-book
+        val body = fetcher.fetch("kakao", isbn) ?: return null
+        val item = jsonMapper.readTree(body).path("documents").firstOrNull { doc ->
+            doc.text("isbn")?.split(Regex("\\s+"))?.any { Isbn.normalize(it) == isbn } == true
+        } ?: return null
         return CatalogBook(
             isbn = isbn,
             title = item.text("title"),
-            author = item.text("author")?.substringBefore(" (지은이)")?.substringBefore(",")?.trim(),
+            author = item.path("authors").path(0).takeUnless { it.isMissingNode || it.isNull }
+                ?.asString()?.takeIf { it.isNotBlank() },
             publisher = item.text("publisher"),
-            totalPages = item.path("subInfo").path("itemPage").asInt(0).takeIf { it > 0 },
-            genre = Genres.fromCategory(item.text("categoryName")),
-            coverUrl = item.text("cover"),
-            source = "aladin",
+            totalPages = null,
+            genre = null,
+            coverUrl = item.text("thumbnail")?.replace("http://", "https://"),
+            source = "kakao",
         )
     }
 
     private fun googleBooks(isbn: String): CatalogBook? {
-        val body = http.get()
-            .uri("https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}&key={key}", isbn, properties.googleBooksKey)
-            .retrieve()
-            .body(String::class.java) ?: return null
+        val body = fetcher.fetch("google", isbn) ?: return null
         val info = jsonMapper.readTree(body).path("items").path(0).path("volumeInfo")
         if (info.isMissingNode) return null
         return CatalogBook(
@@ -128,10 +199,7 @@ class BookLookupService(
     }
 
     private fun openLibrary(isbn: String): CatalogBook? {
-        val body = http.get()
-            .uri("https://openlibrary.org/api/books?bibkeys=ISBN:{isbn}&format=json&jscmd=data", isbn)
-            .retrieve()
-            .body(String::class.java) ?: return null
+        val body = fetcher.fetch("openlibrary", isbn) ?: return null
         val book = jsonMapper.readTree(body).path("ISBN:$isbn")
         if (book.isMissingNode) return null
         return CatalogBook(
@@ -149,7 +217,8 @@ class BookLookupService(
     private fun <T> safe(name: String, block: () -> T?): T? = try {
         block()
     } catch (e: Exception) {
-        log.warn("{} 도서 조회 실패: {}", name, e.message)
+        // 예외 메시지에는 인증키가 들어 있는 요청 URL이 포함될 수 있다.
+        log.warn("{} 도서 조회 실패: {}", name, e.javaClass.simpleName)
         null
     }
 

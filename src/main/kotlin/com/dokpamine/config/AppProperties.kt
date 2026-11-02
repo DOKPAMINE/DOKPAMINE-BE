@@ -11,7 +11,8 @@ data class JwtProperties(
 
 @ConfigurationProperties("dokpamine.catalog")
 data class CatalogProperties(
-    val aladinTtbKey: String = "",
+    val nlkCertKey: String = "",
+    val kakaoRestApiKey: String = "",
     val googleBooksKey: String = "",
     val timeout: Duration = Duration.ofSeconds(4),
 )
