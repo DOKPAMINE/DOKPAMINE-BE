@@ -24,7 +24,7 @@ Issue 생성 → 브랜치 생성 → 작업·커밋 → PR → 리뷰 → main 
 [Refactor] 동기화 재시도 로직 분리
 ```
 
-유형은 `Feat`, `Fix`, `Refactor`, `Docs`, `Chore`, `Test` 중 하나입니다. 요구사항 ID는 PRD의 FR/NFR 또는 화면 번호(S-31, S-41 …)이며, 해당할 때만 붙입니다.
+유형은 `Feat`, `Fix`, `Refactor`, `Docs`, `Chore`, `Test` 중 하나입니다. 요구사항 ID는 FR/NFR/UC 또는 PRD 화면 번호(S-31, S-41 …)이며, 해당할 때만 붙입니다.
 
 ### 본문
 템플릿(`.github/ISSUE_TEMPLATE`)을 채웁니다. **수용 기준은 반드시 확인 가능한 문장으로** 씁니다.

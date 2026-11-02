@@ -8,7 +8,7 @@ Closes #
 ## 테스트
 <!-- 실행한 명령과 결과. 앱이면 확인한 화면이나 시나리오도 적어 주세요. -->
 - [ ] BE: `./gradlew test` 통과
-- [ ] AOS: `./gradlew :app:testDebugUnitTest` 통과
+- [ ] AOS: `npm run typecheck`·`npm run lint`·`npm test -- --ci` 통과
 - 수동 확인:
 
 ## API 계약
