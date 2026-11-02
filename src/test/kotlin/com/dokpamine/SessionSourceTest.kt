@@ -233,9 +233,18 @@ class SessionSourceTest {
         mvc.get("/api/sync/snapshot") { bearer(token) }.andExpect { status { isOk() } }.body(),
     ).path("sessions").toList()
 
-    private fun myRanking(token: String): List<JsonNode> = json.readTree(
-        mvc.get("/api/ranking/weekly?weekStart=2026-10-26") { bearer(token) }.andExpect { status { isOk() } }.body(),
-    ).path("entries").filter { it.path("me").asBoolean() }
+    private fun myRanking(token: String): List<JsonNode> {
+        val ranking = json.readTree(
+            mvc.get("/api/ranking/weekly?weekStart=2026-10-26") { bearer(token) }.andExpect {
+                status { isOk() }
+                jsonPath("$.top") { isArray() }
+                jsonPath("$.around") { isArray() }
+            }.body(),
+        )
+        // FR-15: 상위 30위 밖의 본인도 주변 목록에서 찾아 수동 전환 전후를 검증한다.
+        return (ranking.path("top").toList() + ranking.path("around").toList())
+            .filter { it.path("me").asBoolean() }
+    }
 
     private fun org.springframework.test.web.servlet.MockHttpServletRequestDsl.bearer(token: String) {
         header("Authorization", "Bearer $token")
