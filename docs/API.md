@@ -27,7 +27,9 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 | GET | `/api/catalog/genres` | `["소설","SF",…,"기타"]` |
 
 `CatalogBook = {isbn, title?, author?, publisher?, totalPages?, genre?, coverUrl?, source}`. 일부 필드가 비어 있을 수 있으며, 앱은 빈 칸을 사용자 입력으로 채운다.
-조회 순서는 알라딘(`ALADIN_TTB_KEY`) → Google Books(`GOOGLE_BOOKS_KEY`) → Open Library(키 불필요)다.
+조회 순서는 국립중앙도서관(`NLK_CERT_KEY`, 쪽수·KDC 우선) → 카카오(`KAKAO_REST_API_KEY`, ISBN 조회로 제목·저자·출판사·표지 보완) → Google Books(`GOOGLE_BOOKS_KEY`) → Open Library(키 불필요)다.
+키가 비어 있는 조회처는 호출하지 않고, 앞 결과의 빈 칸만 뒤 결과로 채운다. 외부 조회 실패 시에도 다음 조회처로 넘어간다.
+`source` 가능 값은 `nlk|kakao|google|openlibrary`이며, 병합에 사용된 첫 결과의 값을 유지한다.
 
 ## 개인 기록 동기화 (NFR-04, NFR-05)
 
