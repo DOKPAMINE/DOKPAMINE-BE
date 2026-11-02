@@ -190,7 +190,8 @@ class BookReviewSearchTest {
         }
         entityManager.flush()
         entityManager.clear()
-        val statistics: Statistics = entityManager.entityManagerFactory.unwrap(SessionFactory::class.java).statistics
+        val sessionFactory: SessionFactory = entityManager.entityManagerFactory.unwrap(SessionFactory::class.java)
+        val statistics: Statistics = sessionFactory.statistics
         val wasEnabled = statistics.isStatisticsEnabled
         statistics.isStatisticsEnabled = true
         statistics.clear()
@@ -214,6 +215,41 @@ class BookReviewSearchTest {
         review(book(me, "100%_! 책"), now)
         review(book(me, "100퍼센트 다른 책"), now)
         assertEquals(1, search(me, "100%_!").size())
+    }
+
+    @Test
+    fun `공용 매퍼를 쓰는 피드와 상세와 검색은 같은 공개 응답과 기존 비공개 권한을 유지한다 (FR-08, FR-16, NFR-09)`() {
+        val me = user()
+        val other = user()
+        val book = book(other, "공용 매퍼 책")
+        val older = review(book, now.minusSeconds(10))
+        val newer = review(book, now)
+        val privateReview = review(book(me, "공용 매퍼 책"), now.plusSeconds(20), Visibility.PRIVATE)
+        val deletedBookReview = review(book(me, "공용 매퍼 책", deleted = true), now.plusSeconds(30))
+        likes.save(ReviewLike(ReviewLikeId(newer.id, me.id)))
+        likes.save(ReviewLike(ReviewLikeId(newer.id, other.id)))
+
+        val feed = json.readTree(mvc.get("/api/feed") {
+            with(jwt().jwt { it.subject(me.id.toString()) })
+        }.andExpect { status { isOk() } }.andReturn().response.getContentAsString(Charsets.UTF_8))
+            .toList().filter { it["bookTitle"].asString() == "공용 매퍼 책" }
+        assertEquals(listOf(newer.id.toString(), older.id.toString()), feed.map { it["id"].asString() })
+        assertEquals(search(me, "공용 매퍼 책")[0]["reviews"].toList(), feed)
+        feed.forEach { item ->
+            val detail = json.readTree(mvc.get("/api/feed/${item["id"].asString()}") {
+                with(jwt().jwt { it.subject(me.id.toString()) })
+            }.andExpect { status { isOk() } }.andReturn().response.getContentAsString(Charsets.UTF_8))
+            assertEquals(item, detail)
+        }
+        mvc.get("/api/feed/${privateReview.id}") {
+            with(jwt().jwt { it.subject(me.id.toString()) })
+        }.andExpect { status { isOk() } }
+        mvc.get("/api/feed/${privateReview.id}") {
+            with(jwt().jwt { it.subject(other.id.toString()) })
+        }.andExpect { status { isNotFound() } }
+        mvc.get("/api/feed/${deletedBookReview.id}") {
+            with(jwt().jwt { it.subject(me.id.toString()) })
+        }.andExpect { status { isNotFound() } }
     }
 
     @Test

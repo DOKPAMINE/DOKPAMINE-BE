@@ -2,9 +2,7 @@ package com.dokpamine.feed
 
 import com.dokpamine.catalog.Isbn
 import com.dokpamine.common.ApiException
-import com.dokpamine.record.UserBookRepository
 import com.dokpamine.record.Visibility
-import com.dokpamine.user.UserRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -16,9 +14,7 @@ import java.util.UUID
 @Service
 class BookReviewSearchService(
     private val searchBooks: BookReviewSearchRepository,
-    private val books: UserBookRepository,
-    private val users: UserRepository,
-    private val likes: FeedLikeReadRepository,
+    private val items: FeedItemMapper,
 ) {
     @Transactional(readOnly = true)
     fun search(query: String, me: UUID): List<BookReviewGroup> {
@@ -45,31 +41,10 @@ class BookReviewSearchService(
             }
         val selected = matches.values.flatten()
         if (selected.isEmpty()) return emptyList()
-        val publicBooks = books.findAllById(selected.map { it.bookId }.distinct()).filterNot { it.deleted }.associateBy { it.id }
-        val authors = users.findAllById(selected.map { it.userId }.distinct())
-            .associateBy { it.id }
-        val reviewIds = selected.map { it.id }
-        val likeCounts = likes.countByReviewIds(reviewIds).associate { it.reviewId to it.likeCount }
-        val likedIds = likes.findLikedReviewIds(me, reviewIds).toSet()
+        val mapped = items.toItems(selected, me).associateBy { it.id }
 
         return matches.mapNotNull { (key, entries) ->
-            val items = entries.mapNotNull { review ->
-                val book = publicBooks[review.bookId] ?: return@mapNotNull null
-                val author = authors[review.userId] ?: return@mapNotNull null
-                FeedItem(
-                    id = review.id,
-                    nickname = author.nickname,
-                    bookTitle = book.title,
-                    bookAuthor = book.author,
-                    genre = book.genre,
-                    oneLine = review.oneLine,
-                    body = review.body,
-                    publishedAt = review.publishedAt,
-                    likeCount = likeCounts[review.id] ?: 0,
-                    likedByMe = review.id in likedIds,
-                    mine = review.userId == me,
-                )
-            }
+            val items = entries.mapNotNull { mapped[it.id] }
             val latest = items.firstOrNull() ?: return@mapNotNull null
             BookReviewGroup(key, latest.bookTitle, latest.bookAuthor, key.takeIf { it.startsWith("isbn:") }?.removePrefix("isbn:"), items)
         }
