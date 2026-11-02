@@ -29,6 +29,30 @@ data class CatalogBook(
 object Genres {
     val ALL = listOf("소설", "SF", "시/에세이", "인문", "역사", "사회/정치", "경제/경영", "자기계발", "과학", "예술", "만화", "기타")
 
+    fun fromKdc(kdc: String?): String? {
+        val value = kdc?.trim()?.takeIf { Regex("[0-9]{3}(\\.[0-9]+)?").matches(it) } ?: return null
+        val code = value.take(3).toInt()
+        return when {
+            // 국립중앙도서관 연구 p.270: 199 도덕훈·교훈의 핵심 주제는 인생훈이다.
+            // https://oak.go.kr/nl-ir/bitstream/2020.oak/388/1/국립중앙도서관%20소장자료%20디지털화%20중장기%20전략%20연구.pdf
+            code == 199 -> "자기계발"
+            code == 657 -> "만화"
+            code in 320..329 -> "경제/경영"
+            code in 800..899 -> when (code % 10) {
+                3 -> "소설" // KDC만으로 SF 여부는 알 수 없다.
+                1, 4 -> "시/에세이"
+                // 문학의 나머지 형식(희곡·평론 등)을 소설로 오인하지 않도록 인문으로 묶는다.
+                else -> "인문"
+            }
+            code in 900..999 -> "역사"
+            code in 300..399 -> "사회/정치"
+            code in 100..299 || code in 700..799 -> "인문"
+            code in 400..599 -> "과학"
+            code in 600..699 -> "예술"
+            else -> "기타"
+        }
+    }
+
     fun fromCategory(category: String?): String? {
         if (category.isNullOrBlank()) return null
         val c = category.lowercase()
