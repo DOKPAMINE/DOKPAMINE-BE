@@ -42,6 +42,16 @@ class GenresTest {
 
     @ParameterizedTest(name = "{0} → {1}")
     @CsvSource(
+        "Sciences,과학", "Life sciences,과학", "Artists,예술", "Musicians,예술", "Musicals,예술",
+        "Musical instruments,예술", "Socialists,사회/정치", "Science-Fiction,SF", "Self help,자기계발",
+        "Artificial intelligence,기타",
+    )
+    fun `FR-01 단어 첫머리가 같은 파생형과 하이픈 표기는 같은 장르로 매핑한다`(category: String, genre: String) {
+        assertEquals(genre, Genres.fromCategory(category))
+    }
+
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource(
         "한국소설,소설", "과학소설,SF", "에세이,시/에세이", "에세이를,시/에세이", "시/한국시,시/에세이",
         "만화를,만화", "한국역사,역사", "경제학,경제/경영", "경영학,경제/경영", "자기계발서,자기계발",
         "과학의 역사,역사", "과학책,과학", "사회학,사회/정치", "정치학,사회/정치", "예술론,예술",
