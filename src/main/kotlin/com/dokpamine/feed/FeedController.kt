@@ -4,9 +4,7 @@ import com.dokpamine.common.ApiException
 import com.dokpamine.config.userId
 import com.dokpamine.record.Review
 import com.dokpamine.record.ReviewRepository
-import com.dokpamine.record.UserBookRepository
 import com.dokpamine.record.Visibility
-import com.dokpamine.user.UserRepository
 import jakarta.persistence.Column
 import jakarta.persistence.Embeddable
 import jakarta.persistence.EmbeddedId
@@ -64,25 +62,24 @@ data class LikeResponse(val likeCount: Long, val likedByMe: Boolean)
 @RequestMapping("/api/feed")
 class FeedController(
     private val reviews: ReviewRepository,
-    private val books: UserBookRepository,
-    private val users: UserRepository,
     private val likes: ReviewLikeRepository,
+    private val items: FeedItemMapper,
 ) {
 
     @GetMapping
     @Transactional(readOnly = true)
     fun list(auth: Authentication): List<FeedItem> {
         val me = auth.userId()
-        return reviews.findAllByVisibilityAndDeletedFalseOrderByPublishedAtDesc(Visibility.PUBLIC)
+        val selected = reviews.findAllByVisibilityAndDeletedFalseOrderByPublishedAtDesc(Visibility.PUBLIC)
             .take(100)
-            .mapNotNull { toItem(it, me) }
+        return items.toItems(selected, me)
     }
 
     @GetMapping("/{id}")
     @Transactional(readOnly = true)
     fun detail(auth: Authentication, @PathVariable id: UUID): FeedItem {
         val me = auth.userId()
-        return toItem(visibleReview(id, me), me) ?: throw ApiException.notFound("감상")
+        return items.toItems(listOf(visibleReview(id, me)), me).firstOrNull() ?: throw ApiException.notFound("감상")
     }
 
     @PostMapping("/{id}/like")
@@ -110,23 +107,5 @@ class FeedController(
             throw ApiException.notFound("감상")
         }
         return review
-    }
-
-    private fun toItem(review: Review, me: UUID): FeedItem? {
-        val book = books.findByIdOrNull(review.bookId)?.takeUnless { it.deleted } ?: return null
-        val author = users.findByIdOrNull(review.userId) ?: return null
-        return FeedItem(
-            id = review.id,
-            nickname = author.nickname,
-            bookTitle = book.title,
-            bookAuthor = book.author,
-            genre = book.genre,
-            oneLine = review.oneLine,
-            body = review.body,
-            publishedAt = review.publishedAt,
-            likeCount = likes.countByIdReviewId(review.id),
-            likedByMe = likes.existsById(ReviewLikeId(review.id, me)),
-            mine = review.userId == me,
-        )
     }
 }
