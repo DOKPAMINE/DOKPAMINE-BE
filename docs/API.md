@@ -59,17 +59,39 @@ ReviewDto  {id, bookId, oneLine?(≤100), body?(≤5000), visibility: PRIVATE|PU
 QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, updatedAt}
 ```
 
-## 라운지: 공개 감상 (FR-08, FR-09)
+## 라운지: 공개 감상 (FR-08, FR-09, FR-16)
 
 | Method | Path | 응답 |
 |---|---|---|
 | GET | `/api/feed` | `FeedItem[]` (공개 감상 최신순 100개) |
+| GET | `/api/feed/books?query=데미안` | `BookReviewGroup[]` (책 이름 검색, 묶음별 공개 감상 최신순) |
 | GET | `/api/feed/{reviewId}` | `FeedItem` · 비공개/삭제/없음은 모두 404 |
 | POST | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: true}` (중복 요청해도 1회) |
 | DELETE | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: false}` |
 
 `FeedItem = {id, nickname, bookTitle, bookAuthor, genre, oneLine?, body?, publishedAt?, likeCount, likedByMe, mine}`.
 공개 응답에는 닉네임, 책 제목·저자, 감상만 담는다. 독서 시간, 사진, 보관 위치는 노출하지 않는다.
+
+### 책별 공개 감상 검색 (FR-16, NFR-09)
+
+`GET /api/feed/books`는 인증이 필요하며 `query`에 책 제목의 일부를 전달한다(URL 인코딩).
+검색어와 제목은 앞뒤 공백 제거, 연속 공백(탭·줄바꿈·유니코드 공백 포함)을 한 칸으로 축약하고 대소문자를 무시하여 비교한다.
+검색 대상은 서버에 저장된 책이며 외부 도서 조회를 호출하지 않는다.
+
+```text
+BookReviewGroup {bookKey, bookTitle, bookAuthor, isbn?, reviews: FeedItem[]}
+```
+
+- ISBN이 있으면 앞뒤 공백을 제거한 ISBN이 같은 책끼리 묶는다. 키는 `isbn:<ISBN>`이다.
+- ISBN이 null 또는 공백이면 정규화한 제목과 저자가 **모두** 같은 책끼리 묶는다. 키는 `text:<Base64URL>`이며, 정규화한 제목 + 줄바꿈 + 저자의 UTF-8 바이트를 패딩 없이 인코딩한다.
+- ISBN이 다른 책, ISBN이 있는 책과 없는 책은 제목·저자가 같아도 별도 묶음이다. 앱은 `bookKey`를 묶음 식별자로 사용한다.
+- 묶음의 공개 감상에 연결된 책 제목 중 하나라도 검색어와 일치하면 그 묶음의 공개 감상 전체를 반환한다. ISBN이 같고 제목 표기가 다른 감상도 포함한다.
+- `PUBLIC`이고 삭제되지 않은 감상만 포함하며, 삭제된 책의 감상도 제외한다. 본인의 비공개 감상 역시 포함하지 않는다.
+- `reviews`는 `publishedAt` 내림차순(시각이 없으면 마지막), 동점은 감상 UUID 오름차순이다. 묶음은 가장 최신 감상 순서이며, 대표 제목·저자는 그 감상의 책에서 가져온다.
+- 각 감상은 기존 `FeedItem`과 같은 공개 필드만 담는다. 검색 결과에는 100개 제한을 적용하지 않는다.
+- 일치하는 공개 감상이 없으면 `200 []`이다.
+- `query` 누락·빈 문자열·공백만 입력하면 `400 {"code":"BAD_REQUEST","message":"검색어를 입력해 주세요."}`이다.
+- 토큰 누락·만료·무효는 기존 인증 규칙대로 `401`이다.
 
 ## 독서왕 랭킹 (PRD L01~L05)
 
