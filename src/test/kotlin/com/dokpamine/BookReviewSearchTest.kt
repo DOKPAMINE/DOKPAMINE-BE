@@ -3,6 +3,7 @@ package com.dokpamine
 import com.dokpamine.feed.ReviewLike
 import com.dokpamine.feed.ReviewLikeId
 import com.dokpamine.feed.ReviewLikeRepository
+import com.dokpamine.feed.nativePublishedAtToInstant
 import com.dokpamine.record.BookStatus
 import com.dokpamine.record.Review
 import com.dokpamine.record.ReviewRepository
@@ -28,7 +29,9 @@ import org.springframework.test.web.servlet.get
 import org.springframework.transaction.annotation.Transactional
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
+import java.sql.Timestamp
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.UUID
 
 @SpringBootTest
@@ -313,4 +316,29 @@ class BookReviewSearchTest {
             visibility = visibility, publishedAt = publishedAt, deleted = deleted, createdAt = now, updatedAt = now,
         ),
     )
+}
+
+class NativePublishedAtConversionTest {
+    private val expected = Instant.parse("2026-11-01T12:00:00.123456Z")
+
+    @Test
+    fun `네이티브 공개 시각의 Instant 반환값을 보존한다 (FR-16)`() {
+        assertEquals(expected, nativePublishedAtToInstant(expected))
+    }
+
+    @Test
+    fun `네이티브 공개 시각의 OffsetDateTime 반환값을 UTC 순간으로 변환한다 (FR-16)`() {
+        val value = OffsetDateTime.parse("2026-11-01T21:00:00.123456+09:00")
+        assertEquals(expected, nativePublishedAtToInstant(value))
+    }
+
+    @Test
+    fun `네이티브 공개 시각의 Timestamp 반환값을 정밀도 손실 없이 변환한다 (FR-16)`() {
+        assertEquals(expected, nativePublishedAtToInstant(Timestamp.from(expected)))
+    }
+
+    @Test
+    fun `네이티브 공개 시각이 없으면 빈 값을 유지한다 (FR-16)`() {
+        assertEquals(null, nativePublishedAtToInstant(null))
+    }
 }

@@ -63,7 +63,7 @@ class BookReviewSearchService(
 
     private companion object {
         val whitespace = Regex("[\\s\\p{Z}]+")
-        val latestFirst = compareByDescending<PublicBookSummary> { it.latestPublishedAt?.toInstant() ?: Instant.MIN }
+        val latestFirst = compareByDescending<PublicBookSummary> { nativePublishedAtToInstant(it.latestPublishedAt) ?: Instant.MIN }
             .thenBy { it.latestReviewId }
     }
 }

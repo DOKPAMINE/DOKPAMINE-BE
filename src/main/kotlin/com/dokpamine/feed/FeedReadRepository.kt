@@ -6,6 +6,8 @@ import com.dokpamine.record.Visibility
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.Repository
+import java.sql.Timestamp
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -14,8 +16,17 @@ interface PublicBookSummary {
     val title: String
     val author: String
     val isbn: String?
-    val latestPublishedAt: OffsetDateTime?
+    val latestPublishedAt: Any?
     val latestReviewId: String
+}
+
+// FR-16: 네이티브 timestamptz 결과 타입은 DB와 Hibernate Dialect에 따라 달라진다.
+internal fun nativePublishedAtToInstant(value: Any?): Instant? = when (value) {
+    null -> null
+    is Instant -> value
+    is OffsetDateTime -> value.toInstant()
+    is Timestamp -> value.toInstant()
+    else -> error("지원하지 않는 공개 시각 타입: ${value.javaClass.name}")
 }
 
 interface BookReviewSearchRepository : Repository<UserBook, UUID> {
