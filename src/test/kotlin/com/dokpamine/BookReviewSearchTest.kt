@@ -107,6 +107,24 @@ class BookReviewSearchTest {
     }
 
     @Test
+    fun `공개 시각이 같으면 UUID 문자열 순으로 감상과 묶음을 정렬하고 시각 없음은 마지막이다 (FR-16)`() {
+        val me = user()
+        val firstBook = book(me, "동점 책", isbn = "9788937460449")
+        val firstId = UUID.fromString("00000000-0000-0000-8000-000000000000")
+        val secondId = UUID.fromString("00000000-0000-0000-9000-000000000000")
+        val thirdId = UUID.fromString("80000000-0000-0000-0000-000000000000")
+        review(firstBook, now, id = secondId)
+        review(firstBook, now, id = firstId)
+        review(book(me, "동점 책", isbn = "9788937460456"), now, id = thirdId)
+        review(book(me, "동점 책", author = "시각 없음"), now).also { it.publishedAt = null }
+
+        val groups = search(me, "동점 책")
+        assertEquals(listOf(firstId.toString(), secondId.toString()), groups[0]["reviews"].toList().map { it["id"].asString() })
+        assertEquals(thirdId.toString(), groups[1]["reviews"][0]["id"].asString())
+        assertEquals(true, groups[2]["reviews"][0]["publishedAt"].isNull)
+    }
+
+    @Test
     fun `ISBN 없는 책은 공백과 대소문자를 정규화한 제목과 저자가 모두 같아야 묶인다 (FR-16)`() {
         val me = user()
         val older = review(book(me, "  My\t Book  ", "  Hermann   Hesse  "), now.minusSeconds(20))
@@ -194,9 +212,10 @@ class BookReviewSearchTest {
         publishedAt: Instant,
         visibility: Visibility = Visibility.PUBLIC,
         deleted: Boolean = false,
+        id: UUID = UUID.randomUUID(),
     ): Review = reviews.save(
         Review(
-            id = UUID.randomUUID(), userId = book.userId, bookId = book.id, oneLine = "한줄평", body = "독후감",
+            id = id, userId = book.userId, bookId = book.id, oneLine = "한줄평", body = "독후감",
             visibility = visibility, publishedAt = publishedAt, deleted = deleted, createdAt = now, updatedAt = now,
         ),
     )

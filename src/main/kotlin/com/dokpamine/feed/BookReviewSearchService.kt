@@ -28,7 +28,7 @@ class BookReviewSearchService(
         if (normalizedQuery.isEmpty()) throw ApiException.badRequest("검색어를 입력해 주세요.")
 
         val publicReviews = reviews.findAllByVisibilityAndDeletedFalseOrderByPublishedAtDesc(Visibility.PUBLIC)
-            .sortedWith(compareByDescending<Review> { it.publishedAt ?: Instant.MIN }.thenBy { it.id })
+            .sortedWith(compareByDescending<Review> { it.publishedAt ?: Instant.MIN }.thenBy { it.id.toString() })
         val publicBooks = books.findAllById(publicReviews.map { it.bookId }.distinct())
             .filterNot { it.deleted }
             .associateBy { it.id }
