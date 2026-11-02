@@ -1,5 +1,6 @@
 package com.dokpamine
 
+import com.dokpamine.feed.BookReviewSearchRepository
 import com.dokpamine.feed.ReviewLike
 import com.dokpamine.feed.ReviewLikeId
 import com.dokpamine.feed.ReviewLikeRepository
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.data.domain.PageRequest
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
@@ -46,6 +48,7 @@ class BookReviewSearchTest {
     @Autowired lateinit var reviews: ReviewRepository
     @Autowired lateinit var likes: ReviewLikeRepository
     @Autowired lateinit var entityManager: EntityManager
+    @Autowired lateinit var searchBooks: BookReviewSearchRepository
 
     private val now = Instant.parse("2026-11-01T12:00:00Z")
 
@@ -179,6 +182,35 @@ class BookReviewSearchTest {
         assertEquals(20, groups.size())
         assertEquals(popularReviews.reversed().take(100).map { it.id.toString() }, groups[0]["reviews"].toList().map { it["id"].asString() })
         assertEquals(otherReviews.take(19).map { it.id.toString() }, groups.toList().drop(1).map { it["reviews"][0]["id"].asString() })
+    }
+
+    @Test
+    fun `제목 후보는 UUID 문자열 순으로 500건까지만 읽고 초과 책은 검색에서 제외한다 (FR-16)`() {
+        val me = user()
+        val candidates = (0..500).map { index ->
+            book(me, "후보 상한 검색", author = "저자 $index").also {
+                review(it, now.minusSeconds(index.toLong()))
+            }
+        }.sortedBy { it.id.toString() }
+        val excluded = candidates.last()
+        review(excluded, now.plusSeconds(1000))
+        entityManager.flush()
+        entityManager.clear()
+
+        val projected = searchBooks.findTitleCandidates("%후보%상한%검색%", Visibility.PUBLIC, PageRequest.of(0, 500))
+        assertEquals(candidates.take(500).map { it.id }, projected.map { it.id })
+        projected.forEachIndexed { index, candidate ->
+            assertEquals(candidates[index].title, candidate.title)
+            assertEquals(candidates[index].author, candidate.author)
+            assertEquals(candidates[index].isbn, candidate.isbn)
+        }
+
+        val groups = search(me, "후보 상한 검색").toList()
+        assertEquals(20, groups.size)
+        assertFalse(groups.any { it["bookAuthor"].asString() == excluded.author })
+        val expectedAuthors = candidates.take(500).sortedBy { it.author.removePrefix("저자 ").toInt() }
+            .take(20).map { it.author }
+        assertEquals(expectedAuthors, groups.map { it["bookAuthor"].asString() })
     }
 
     @Test

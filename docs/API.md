@@ -77,6 +77,7 @@ QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, 
 `GET /api/feed/books`는 인증이 필요하며 `query`에 책 제목의 일부를 전달한다(URL 인코딩).
 검색어와 제목은 앞뒤 공백 제거, 연속 공백(탭·줄바꿈·유니코드 공백 포함)을 한 칸으로 축약하고 대소문자를 무시하여 비교한다.
 검색 대상은 서버에 저장된 책이며 외부 도서 조회를 호출하지 않는다.
+공개 감상이 있는 책 중 제목 LIKE 조건을 통과한 후보를 UUID 문자열 오름차순으로 최대 500건 읽고 제목을 정규화해 재검증하므로, 후보 상한을 초과한 책은 검색에서 제외될 수 있다.
 
 ```text
 BookReviewGroup {bookKey, bookTitle, bookAuthor, isbn?, reviews: FeedItem[]}

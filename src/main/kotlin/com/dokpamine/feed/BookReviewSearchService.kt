@@ -25,7 +25,7 @@ class BookReviewSearchService(
         val pattern = normalizedQuery.split(' ').joinToString("%", "%", "%") { token ->
             token.replace("!", "!!").replace("%", "!%").replace("_", "!_")
         }
-        val matchingKeys = searchBooks.findTitleCandidates(pattern, Visibility.PUBLIC)
+        val matchingKeys = searchBooks.findTitleCandidates(pattern, Visibility.PUBLIC, PageRequest.of(0, 500))
             .filter { normalize(it.title).contains(normalizedQuery) }
             .map { bookKey(it.isbn, it.title, it.author) }.toSet()
         if (matchingKeys.isEmpty()) return emptyList()

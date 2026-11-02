@@ -29,12 +29,21 @@ internal fun nativePublishedAtToInstant(value: Any?): Instant? = when (value) {
     else -> error("지원하지 않는 공개 시각 타입: ${value.javaClass.name}")
 }
 
+interface BookTitleCandidate {
+    val id: UUID
+    val title: String
+    val author: String
+    val isbn: String?
+}
+
 interface BookReviewSearchRepository : Repository<UserBook, UUID> {
     @Query("""
-        select b from UserBook b where b.deleted = false and lower(b.title) like :pattern escape '!'
+        select b.id as id, b.title as title, b.author as author, b.isbn as isbn
+        from UserBook b where b.deleted = false and lower(b.title) like :pattern escape '!'
         and exists (select r.id from Review r where r.bookId = b.id and r.deleted = false and r.visibility = :visibility)
+        order by cast(b.id as String) asc
     """)
-    fun findTitleCandidates(pattern: String, visibility: Visibility): List<UserBook>
+    fun findTitleCandidates(pattern: String, visibility: Visibility, pageable: Pageable): List<BookTitleCandidate>
 
     // FR-16: 제목이 다른 ISBN 사본도 찾되 감상 본문은 읽지 않고 책별 최신 감상만 비교한다.
     @Query(value = """
