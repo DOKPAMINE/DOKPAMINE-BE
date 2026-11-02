@@ -1,5 +1,6 @@
 package com.dokpamine.feed
 
+import com.dokpamine.catalog.Isbn
 import com.dokpamine.common.ApiException
 import com.dokpamine.record.Review
 import com.dokpamine.record.ReviewRepository
@@ -68,6 +69,7 @@ class BookReviewSearchService(
     }
 
     private fun isbn(book: UserBook): String? = book.isbn?.trim()?.takeIf { it.isNotEmpty() }
+        ?.let { Isbn.normalize(it) ?: it }
 
     private fun normalize(value: String): String = whitespace.replace(value, " ").trim().lowercase(Locale.ROOT)
 

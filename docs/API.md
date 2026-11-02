@@ -82,7 +82,7 @@ QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, 
 BookReviewGroup {bookKey, bookTitle, bookAuthor, isbn?, reviews: FeedItem[]}
 ```
 
-- ISBN이 있으면 앞뒤 공백을 제거한 ISBN이 같은 책끼리 묶는다. 키는 `isbn:<ISBN>`이다.
+- ISBN이 있으면 앞뒤 공백을 제거하고 유효한 ISBN-10/13을 ISBN-13으로 정규화해 같은 책끼리 묶는다. 정규화할 수 없는 ISBN은 공백 제거 값 그대로 사용한다. 키는 `isbn:<ISBN>`이며 응답의 `isbn`도 이 값을 사용한다.
 - ISBN이 null 또는 공백이면 정규화한 제목과 저자가 **모두** 같은 책끼리 묶는다. 키는 `text:<Base64URL>`이며, 정규화한 제목 + 줄바꿈 + 저자의 UTF-8 바이트를 패딩 없이 인코딩한다.
 - ISBN이 다른 책, ISBN이 있는 책과 없는 책은 제목·저자가 같아도 별도 묶음이다. 앱은 `bookKey`를 묶음 식별자로 사용한다.
 - 묶음의 공개 감상에 연결된 책 제목 중 하나라도 검색어와 일치하면 그 묶음의 공개 감상 전체를 반환한다. ISBN이 같고 제목 표기가 다른 감상도 포함한다.

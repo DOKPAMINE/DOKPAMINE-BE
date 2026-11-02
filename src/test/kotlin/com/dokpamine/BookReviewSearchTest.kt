@@ -91,6 +91,22 @@ class BookReviewSearchTest {
     }
 
     @Test
+    fun `같은 책의 ISBN 10과 13 감상은 ISBN 13으로 한 묶음이 된다 (FR-16)`() {
+        val me = user()
+        val older = review(book(me, "데미안", isbn = "8937460440"), now.minusSeconds(10))
+        val newer = review(book(user(), "Demian", isbn = "9788937460449"), now)
+
+        val groups = search(me, "데미안")
+        assertEquals(1, groups.size())
+        assertEquals("isbn:9788937460449", groups[0]["bookKey"].asString())
+        assertEquals("9788937460449", groups[0]["isbn"].asString())
+        assertEquals(
+            listOf(newer.id.toString(), older.id.toString()),
+            groups[0]["reviews"].toList().map { it["id"].asString() },
+        )
+    }
+
+    @Test
     fun `ISBN 없는 책은 공백과 대소문자를 정규화한 제목과 저자가 모두 같아야 묶인다 (FR-16)`() {
         val me = user()
         val older = review(book(me, "  My\t Book  ", "  Hermann   Hesse  "), now.minusSeconds(20))
