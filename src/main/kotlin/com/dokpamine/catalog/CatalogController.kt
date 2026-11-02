@@ -61,18 +61,22 @@ object Genres {
     fun fromCategory(category: String?): String? {
         if (category.isNullOrBlank()) return null
         val c = category.lowercase()
+        // FR-01: 부분 문자열 비교는 "Outer Party"의 art를 예술로 오인하므로 영어는 단어 경계를 확인한다.
+        // 단, 단어 첫머리가 같은 복수형·파생형(sciences, artists, musicians)은 예전처럼 같은 장르로 보고,
+        // 띄어쓰기와 하이픈 표기 차이(Science-Fiction, Self help)는 같은 키워드로 본다.
+        fun english(pattern: String) = Regex("(?<![a-z0-9])(?:$pattern)(?![a-z0-9])").containsMatchIn(c)
         return when {
-            "sf" in c || "science fiction" in c || "과학소설" in c -> "SF"
-            "만화" in c || "comic" in c || "graphic novel" in c -> "만화"
-            "에세이" in c || "시/" in c || "poetry" in c || "essay" in c -> "시/에세이"
-            "소설" in c || "fiction" in c -> "소설"
-            "역사" in c || "history" in c -> "역사"
-            "경제" in c || "경영" in c || "business" in c || "economics" in c -> "경제/경영"
-            "자기계발" in c || "self-help" in c -> "자기계발"
-            "과학" in c || "science" in c -> "과학"
-            "사회" in c || "정치" in c || "political" in c || "social" in c -> "사회/정치"
-            "예술" in c || "art" in c || "music" in c -> "예술"
-            "인문" in c || "철학" in c || "philosophy" in c || "psychology" in c -> "인문"
+            english("sf") || english("science[ -]fiction") || "과학소설" in c -> "SF"
+            "만화" in c || english("comics?") || english("graphic novels?") -> "만화"
+            "에세이" in c || "시/" in c || english("poetry") || english("essays?") -> "시/에세이"
+            "소설" in c || english("fiction") -> "소설"
+            "역사" in c || english("history") -> "역사"
+            "경제" in c || "경영" in c || english("business") || english("economics") -> "경제/경영"
+            "자기계발" in c || english("self[ -]help") -> "자기계발"
+            "과학" in c || english("sciences?") -> "과학"
+            "사회" in c || "정치" in c || english("political") || english("social(?:ism|ists?)?") -> "사회/정치"
+            "예술" in c || english("arts?|artists?") || english("music(?:als?|ians?)?") -> "예술"
+            "인문" in c || "철학" in c || english("philosophy") || english("psychology") -> "인문"
             else -> "기타"
         }
     }
