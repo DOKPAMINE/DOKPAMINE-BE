@@ -1,7 +1,7 @@
 # DOKPAMINE-BE: 에이전트 작업 규칙
 
 독파민(독서 기록 앱)의 백엔드다. Android 앱(`DOKPAMINE-AOS`)이 유일한 클라이언트다.
-요구사항 ID(FR-xx, NFR-xx, UC-xx)는 팀의 요구사항 분석서를, 화면 ID(H01, B01 …)는 Figma "독파민 · 75 화면"을 따른다.
+요구사항 ID(FR-xx, NFR-xx, UC-xx)와 화면 번호(S-xx)는 DOKPAMINE-DOCS의 PRD.md v1.0을 따른다. Figma는 `v1.0` 페이지가 기준이다.
 
 **브랜치, 커밋, Issue, PR 규칙은 `CONTRIBUTING.md`를 따른다.** 특히 커밋은 Conventional Commits 형식(`feat(record): …`)에 `Refs #이슈번호`를 붙이고, 커밋 하나에는 논리적으로 하나의 변경만 담는다. 리뷰 워커는 리뷰에서 고친 내용을 별도 커밋으로 남긴다.
 
