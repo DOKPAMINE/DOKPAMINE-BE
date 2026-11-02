@@ -39,9 +39,11 @@ interface BookTitleCandidate {
 interface BookReviewSearchRepository : Repository<UserBook, UUID> {
     @Query("""
         select b.id as id, b.title as title, b.author as author, b.isbn as isbn
-        from UserBook b where b.deleted = false and lower(b.title) like :pattern escape '!'
-        and exists (select r.id from Review r where r.bookId = b.id and r.deleted = false and r.visibility = :visibility)
-        order by cast(b.id as String) asc
+        from UserBook b join Review r on r.bookId = b.id
+        where b.deleted = false and lower(b.title) like :pattern escape '!'
+        and r.deleted = false and r.visibility = :visibility
+        group by b.id, b.title, b.author, b.isbn
+        order by max(r.publishedAt) desc nulls last, cast(b.id as String) asc
     """)
     fun findTitleCandidates(pattern: String, visibility: Visibility, pageable: Pageable): List<BookTitleCandidate>
 
@@ -54,9 +56,13 @@ interface BookReviewSearchRepository : Repository<UserBook, UUID> {
                    row_number() over (partition by book_id order by published_at desc nulls last, cast(id as varchar) asc) as position
             from reviews where visibility = 'PUBLIC' and deleted = false
         ) r on r.book_id = b.id and r.position = 1
-        where b.deleted = false
+        where b.deleted = false and (
+            lower(b.title) like :pattern escape '!'
+            or trim(b.isbn) in (:isbns)
+            or upper(replace(replace(trim(b.isbn), '-', ''), ' ', '')) in (:isbnForms)
+        )
     """, nativeQuery = true)
-    fun findPublicBookSummaries(): List<PublicBookSummary>
+    fun findPublicBookSummaries(pattern: String, isbns: Collection<String>, isbnForms: Collection<String>): List<PublicBookSummary>
 
     @Query("""
         select r from Review r where r.bookId in :bookIds and r.visibility = :visibility and r.deleted = false

@@ -59,7 +59,7 @@ class BookReviewSearchTest {
         val book = book(me, "데미안", isbn = "9788937460449")
         val older = review(book, now.minusSeconds(60))
         val newer = review(book(other, "데미안", isbn = "9788937460449"), now)
-        review(book, now.plusSeconds(60), Visibility.PRIVATE)
+        review(book(user(), "데미안", isbn = "9788937460449"), now.plusSeconds(60), Visibility.PRIVATE)
         likes.save(ReviewLike(ReviewLikeId(newer.id, me.id)))
 
         val groups = search(me, "데미안")
@@ -88,8 +88,8 @@ class BookReviewSearchTest {
         val me = user()
         val matching = review(book(me, "데미안", isbn = "9788937460449"), now.minusSeconds(10))
         val variant = review(book(user(), "Demian", isbn = "9788937460449"), now)
-        review(book(me, "데미안", isbn = "9788937460456"), now.minusSeconds(20))
-        review(book(me, "데미안"), now.minusSeconds(30))
+        review(book(user(), "데미안", isbn = "9788937460456"), now.minusSeconds(20))
+        review(book(user(), "데미안"), now.minusSeconds(30))
 
         val groups = search(me, "데미안")
         assertEquals(3, groups.size())
@@ -125,9 +125,9 @@ class BookReviewSearchTest {
         val secondId = UUID.fromString("00000000-0000-0000-9000-000000000000")
         val thirdId = UUID.fromString("80000000-0000-0000-0000-000000000000")
         review(firstBook, now, id = secondId)
-        review(firstBook, now, id = firstId)
-        review(book(me, "동점 책", isbn = "9788937460456"), now, id = thirdId)
-        review(book(me, "동점 책", author = "시각 없음"), now).also { it.publishedAt = null }
+        review(book(user(), "동점 책", isbn = "9788937460449"), now, id = firstId)
+        review(book(user(), "동점 책", isbn = "9788937460456"), now, id = thirdId)
+        review(book(user(), "동점 책", author = "시각 없음"), now).also { it.publishedAt = null }
 
         val groups = search(me, "동점 책")
         assertEquals(listOf(firstId.toString(), secondId.toString()), groups[0]["reviews"].toList().map { it["id"].asString() })
@@ -140,8 +140,8 @@ class BookReviewSearchTest {
         val me = user()
         val older = review(book(me, "  My\t Book  ", "  Hermann   Hesse  "), now.minusSeconds(20))
         val newer = review(book(user(), "my book", "hermann\u00a0hesse", isbn = "  "), now)
-        review(book(me, "MY BOOK", "다른 저자"), now.minusSeconds(10))
-        review(book(me, "My Other Book", "Hermann Hesse"), now)
+        review(book(user(), "MY BOOK", "다른 저자"), now.minusSeconds(10))
+        review(book(user(), "My Other Book", "Hermann Hesse"), now)
 
         val groups = search(me, "  MY\t\u00a0BOOK  ")
         assertEquals(2, groups.size())
@@ -158,9 +158,9 @@ class BookReviewSearchTest {
         val me = user()
         val active = book(me, "숨긴 책", isbn = "9788937460449")
         review(active, now, Visibility.PRIVATE)
-        review(active, now, deleted = true)
+        review(book(user(), "숨긴 책", isbn = "9788937460449"), now, deleted = true)
         review(book(user(), "숨긴 책"), now, Visibility.PRIVATE)
-        review(book(me, "숨긴 책", deleted = true), now)
+        review(book(user(), "숨긴 책", deleted = true), now)
         assertEquals(0, search(me, "숨긴 책").size())
 
         review(book(user(), "Visible title", isbn = "9788937460449"), now)
@@ -172,10 +172,11 @@ class BookReviewSearchTest {
     @Test
     fun `검색은 최신 20개 묶음과 묶음마다 최신 감상 100개까지만 반환한다 (FR-16)`() {
         val me = user()
-        val popular = book(me, "상한 검색", author = "인기 저자")
-        val popularReviews = (0..100).map { review(popular, now.plusSeconds(it.toLong())) }
+        val popularReviews = (0..100).map {
+            review(book(user(), "상한 검색", author = "인기 저자"), now.plusSeconds(it.toLong()))
+        }
         val otherReviews = (0..20).map { index ->
-            review(book(me, "상한 검색", author = "저자 $index"), now.minusSeconds(index + 1L))
+            review(book(user(), "상한 검색", author = "저자 $index"), now.minusSeconds(index + 1L))
         }
 
         val groups = search(me, "상한 검색")
@@ -185,15 +186,17 @@ class BookReviewSearchTest {
     }
 
     @Test
-    fun `제목 후보는 UUID 문자열 순으로 500건까지만 읽고 초과 책은 검색에서 제외한다 (FR-16)`() {
+    fun `제목 후보는 최신 공개순 500건까지만 읽고 초과 책은 검색에서 제외한다 (FR-16)`() {
         val me = user()
         val candidates = (0..500).map { index ->
-            book(me, "후보 상한 검색", author = "저자 $index").also {
+            book(user(), "후보 상한 검색", author = "저자 $index").also {
                 review(it, now.minusSeconds(index.toLong()))
             }
-        }.sortedBy { it.id.toString() }
+        }
         val excluded = candidates.last()
-        review(excluded, now.plusSeconds(1000))
+        // 비공개·삭제 감상이 최신이어도 공개 후보의 우선순위를 올리지 않는다.
+        review(book(user(), "후보 상한 검색", author = "저자 500"), now.plusSeconds(1000), Visibility.PRIVATE)
+        review(book(user(), "후보 상한 검색", author = "저자 500"), now.plusSeconds(1000), deleted = true)
         entityManager.flush()
         entityManager.clear()
 
@@ -214,12 +217,40 @@ class BookReviewSearchTest {
     }
 
     @Test
+    fun `요약 조회는 제목과 ISBN으로 좁히고 다른 제목의 ISBN 10 사본을 유지한다 (FR-16)`() {
+        val me = user()
+        val matching = review(book(me, "찾을 제목", isbn = "9788937460449"), now.minusSeconds(20))
+        val variant = review(book(user(), "Different title", isbn = "8937-46044-0"), now)
+        val textMatch = review(book(user(), "찾을 제목", author = "ISBN 없음"), now.minusSeconds(10))
+        review(book(user(), "관계없는 제목", isbn = "9788937460456"), now.plusSeconds(100))
+        review(book(user(), "Different private", isbn = "8937460440"), now, Visibility.PRIVATE)
+        review(book(user(), "Different deleted", isbn = "8937460440", deleted = true), now)
+        entityManager.flush()
+        entityManager.clear()
+
+        val summaries = searchBooks.findPublicBookSummaries("%찾을%제목%", listOf("9788937460449"), listOf("9788937460449", "8937460440"))
+        assertEquals(setOf(matching.bookId, variant.bookId, textMatch.bookId), summaries.map { UUID.fromString(it.id) }.toSet())
+        val groups = search(me, "찾을 제목")
+        assertEquals(2, groups.size())
+        assertEquals(listOf(variant.id.toString(), matching.id.toString()), groups[0]["reviews"].toList().map { it["id"].asString() })
+    }
+
+    @Test
+    fun `정규화할 수 없는 ISBN도 같은 값인 다른 제목의 사본을 유지한다 (FR-16)`() {
+        val me = user()
+        val matching = review(book(me, "검증 불가 책", isbn = "unknown"), now.minusSeconds(10))
+        val variant = review(book(user(), "Unknown title", isbn = " unknown "), now)
+        val groups = search(me, "검증 불가")
+        assertEquals(1, groups.size())
+        assertEquals(listOf(variant.id.toString(), matching.id.toString()), groups[0]["reviews"].toList().map { it["id"].asString() })
+    }
+
+    @Test
     fun `여러 책 묶음에서도 좋아요를 두 번만 조회하고 SQL 실행 수 상한을 유지한다 (FR-16)`() {
         val me = user()
         val other = user()
         val entries = (0..2).flatMap { group ->
-            val book = book(other, "배치 좋아요 $group")
-            (0..29).map { review(book, now.minusSeconds(it.toLong())) }
+            (0..29).map { review(book(user(), "배치 좋아요 $group"), now.minusSeconds(it.toLong())) }
         }
         entries.forEachIndexed { index, review ->
             likes.save(ReviewLike(ReviewLikeId(review.id, other.id)))
@@ -264,7 +295,7 @@ class BookReviewSearchTest {
     fun `검색어의 LIKE 특수문자는 일반 제목 문자로 검색한다 (FR-16)`() {
         val me = user()
         review(book(me, "100%_! 책"), now)
-        review(book(me, "100퍼센트 다른 책"), now)
+        review(book(user(), "100퍼센트 다른 책"), now)
         assertEquals(1, search(me, "100%_!").size())
     }
 
@@ -274,9 +305,9 @@ class BookReviewSearchTest {
         val other = user()
         val book = book(other, "공용 매퍼 책")
         val older = review(book, now.minusSeconds(10))
-        val newer = review(book, now)
+        val newer = review(book(user(), "공용 매퍼 책"), now)
         val privateReview = review(book(me, "공용 매퍼 책"), now.plusSeconds(20), Visibility.PRIVATE)
-        val deletedBookReview = review(book(me, "공용 매퍼 책", deleted = true), now.plusSeconds(30))
+        val deletedBookReview = review(book(user(), "공용 매퍼 책", deleted = true), now.plusSeconds(30))
         likes.save(ReviewLike(ReviewLikeId(newer.id, me.id)))
         likes.save(ReviewLike(ReviewLikeId(newer.id, other.id)))
 

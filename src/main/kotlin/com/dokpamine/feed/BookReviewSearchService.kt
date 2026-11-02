@@ -25,12 +25,13 @@ class BookReviewSearchService(
         val pattern = normalizedQuery.split(' ').joinToString("%", "%", "%") { token ->
             token.replace("!", "!!").replace("%", "!%").replace("_", "!_")
         }
-        val matchingKeys = searchBooks.findTitleCandidates(pattern, Visibility.PUBLIC, PageRequest.of(0, 500))
+        val matchingKeys = searchBooks.findTitleCandidates(pattern, Visibility.PUBLIC, PageRequest.of(0, TITLE_CANDIDATE_LIMIT))
             .filter { normalize(it.title).contains(normalizedQuery) }
             .map { bookKey(it.isbn, it.title, it.author) }.toSet()
         if (matchingKeys.isEmpty()) return emptyList()
 
-        val matches = searchBooks.findPublicBookSummaries()
+        val matchingIsbns = matchingKeys.filter { it.startsWith("isbn:") }.map { it.removePrefix("isbn:") }
+        val matches = searchBooks.findPublicBookSummaries(pattern, matchingIsbns, matchingIsbns.flatMap(::isbnSearchForms))
             .filter { bookKey(it.isbn, it.title, it.author) in matchingKeys }
             .groupBy { bookKey(it.isbn, it.title, it.author) }
             .map { (key, entries) -> key to entries.sortedWith(latestFirst) }
@@ -59,9 +60,19 @@ class BookReviewSearchService(
     private fun isbn(raw: String?): String? = raw?.trim()?.takeIf { it.isNotEmpty() }
         ?.let { Isbn.normalize(it) ?: it }
 
+    // FR-16: 제목이 다른 ISBN-10 사본도 SQL에서 좁혀 읽되 최종 묶음은 기존 정규화로 검증한다.
+    private fun isbnSearchForms(value: String): List<String> {
+        if (Isbn.normalize(value) != value) return emptyList()
+        if (!value.startsWith("978")) return listOf(value)
+        val firstNine = value.substring(3, 12)
+        val check = (11 - firstNine.mapIndexed { index, digit -> (10 - index) * (digit - '0') }.sum() % 11) % 11
+        return listOf(value, firstNine + if (check == 10) "X" else check.toString())
+    }
+
     private fun normalize(value: String): String = whitespace.replace(value, " ").trim().lowercase(Locale.ROOT)
 
     private companion object {
+        const val TITLE_CANDIDATE_LIMIT = 500
         val whitespace = Regex("[\\s\\p{Z}]+")
         val latestFirst = compareByDescending<PublicBookSummary> { nativePublishedAtToInstant(it.latestPublishedAt) ?: Instant.MIN }
             .thenBy { it.latestReviewId }
