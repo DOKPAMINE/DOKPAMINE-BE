@@ -40,6 +40,14 @@ public class SecurityConfig {
                                 .permitAll()
                                 .requestMatchers("/actuator/health", "/h2-console/**")
                                 .permitAll()
+                                .requestMatchers(
+                                        HttpMethod.GET,
+                                        "/swagger-ui.html",
+                                        "/swagger-ui/**",
+                                        "/v3/api-docs",
+                                        "/v3/api-docs/**",
+                                        "/v3/api-docs.yaml")
+                                .permitAll()
                                 .anyRequest()
                                 .authenticated())
                 .oauth2ResourceServer(resource -> resource.jwt(Customizer.withDefaults()))

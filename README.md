@@ -27,6 +27,15 @@ chmod +x gradlew
 - 기본 `local` 프로필은 H2 파일 DB(`./data/`)를 쓰므로 DB 설치가 필요 없습니다.
 - 헬스 체크: http://localhost:8080/actuator/health
 
+## Swagger API 문서
+
+- Swagger UI: http://localhost:8080/swagger-ui/index.html
+- OpenAPI JSON: http://localhost:8080/v3/api-docs
+- `Authorize`에 회원가입·로그인 응답의 `accessToken`을 입력하면 인증이 필요한 API를 호출할 수 있습니다.
+
+컨트롤러의 `@Tag`, `@Operation`, `@ApiResponse`, `@Parameter`로 API 설명을 관리합니다.
+문서 페이지는 로그인 없이 열 수 있고, 기존 API의 JWT 인증 규칙은 유지됩니다.
+
 ## 테스트와 빌드
 
 ```powershell
