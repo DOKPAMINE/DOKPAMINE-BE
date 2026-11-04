@@ -6,10 +6,10 @@
 **브랜치, 커밋, Issue, PR 규칙은 `CONTRIBUTING.md`를 따른다.** 특히 커밋은 Conventional Commits 형식(`feat(record): …`)에 `Refs #이슈번호`를 붙이고, 커밋 하나에는 논리적으로 하나의 변경만 담는다. 리뷰 워커는 리뷰에서 고친 내용을 별도 커밋으로 남긴다.
 
 ## 스택
-- Kotlin 2.3 · Spring Boot 4.1 · Java 21 · Gradle(Kotlin DSL, wrapper 포함)
+- Java 21 · Spring Boot 4.1 · Gradle(Groovy DSL, wrapper 포함)
 - Spring Web MVC, Data JPA, Security + OAuth2 Resource Server(HS256 JWT), Validation, Flyway
 - DB: 로컬은 H2 파일 DB(PostgreSQL 모드, `./data/`), 운영은 PostgreSQL(`prod` 프로필)
-- JSON: Jackson 3 (`tools.jackson.*` 패키지. `com.fasterxml.jackson`이 아니다)
+- JSON: Jackson 3 (`tools.jackson.*`). 공용 애너테이션은 `com.fasterxml.jackson.annotation.*`를 사용한다.
 
 ## 명령
 ```bash
@@ -21,16 +21,22 @@ H2 콘솔은 http://localhost:8080/h2-console (JDBC URL `jdbc:h2:file:./data/dok
 
 ## 구조
 ```
-src/main/kotlin/com/dokpamine/
-  config/   SecurityConfig(JWT, 공개 경로), AppProperties
-  common/   ApiException + GlobalExceptionHandler  → {code, message}
-  user/     User, 회원가입·로그인·내 정보 (AuthController)
-  record/   UserBook·ReadingSession·Review·Quote 엔티티, 멱등 upsert (RecordService), snapshot
-  catalog/  ISBN 조회 (국립중앙도서관 → 카카오 → Google Books → Open Library), ISBN 정규화, KDC·장르 매핑
-  feed/     공개 감상 피드, 좋아요 (ReviewLike)
-  ranking/  주간 랭킹 집계
-src/main/resources/db/migration/   Flyway SQL (V1__init.sql …)
-docs/API.md                        API 계약: 엔드포인트를 바꾸면 반드시 함께 수정
+src/main/java/com/dokpamine/
+  domain/{user,record,catalog,feed,ranking}/
+    controller/  HTTP 요청과 응답
+    service/     비즈니스 로직과 트랜잭션
+    repository/  JPA 저장소와 조회 projection
+    entity/      JPA 엔티티와 enum
+    dto/request/ · dto/response/  전송 모델
+    dto/         요청·응답 공용 기록 동기화 모델
+    client/ · util/ · support/   기능별 외부 조회 및 보조 로직
+  global/config/                       SecurityConfig, 설정 프로퍼티
+  global/jwt/                          인증 사용자 ID
+  global/apiPayload/exception/         ApiException, GlobalExceptionHandler
+  global/apiPayload/response/          ErrorResponse
+src/main/resources/db/migration/       Flyway SQL
+docs/API.md                            기존 API 계약
+
 ```
 
 ## 반드시 지킬 규칙
@@ -44,7 +50,7 @@ docs/API.md                        API 계약: 엔드포인트를 바꾸면 반�
 
 ## 코드 스타일
 - 4칸 들여쓰기(`.editorconfig`), 패키지는 기능 단위로 나눈다.
-- 엔티티는 `class` + `var`(JPA), 전송 모델은 `data class` + Bean Validation으로 쓴다.
+- 엔티티는 Java `class` + JPA 기본 생성자, 전송 모델은 Java `record` + Bean Validation으로 쓴다. Controller는 요청 처리, Service는 비즈니스 로직과 트랜잭션을 맡는다.
 - 주석은 "왜"를 한국어로 짧게 쓴다. 요구사항 ID를 붙이면 리뷰가 쉬워진다.
 
 ## 이번 학기 범위 밖 (구현하지 않음)
