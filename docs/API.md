@@ -8,6 +8,13 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 - ID: 클라이언트가 만든 UUID (오프라인 우선, 아래 "동기화 규칙" 참고)
 - 오류: `{ "code": "VALIDATION_FAILED", "message": "사용자에게 보여줄 한국어 문장" }`
 
+## Swagger 문서
+
+- UI: `http://localhost:8080/swagger-ui/index.html` (`/swagger-ui.html`도 지원)
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- 문서 조회는 인증 없이 가능하다. 인증이 필요한 API는 `Authorize`에 accessToken을 입력하여 호출한다.
+- 회원가입·로그인을 제외한 기존 API의 JWT 인증 규칙과 응답 계약은 동일하다.
+
 ## 인증 (FR-10)
 
 | Method | Path | Body | 응답 |

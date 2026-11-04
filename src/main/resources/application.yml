@@ -13,6 +13,9 @@ spring:
 server:
   port: 8080
 
+springdoc:
+  paths-to-match: /api/**
+
 dokpamine:
   jwt:
     # 운영에서는 반드시 DOKPAMINE_JWT_SECRET 환경 변수로 32바이트 이상 값을 넣는다.

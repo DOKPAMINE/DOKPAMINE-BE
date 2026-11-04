@@ -2,13 +2,52 @@
 
 독파민 백엔드입니다. 바코드로 책을 등록하고 독서 시간·페이지·감상을 기록하는 Android 앱의 서버입니다.
 
+Java 21 + Spring Boot 4.1.2 프로젝트입니다. SeniorON 백엔드처럼 `domain/{기능}` 아래에
+`controller`, `service`, `repository`, `entity`, `dto/request`, `dto/response`를 두고,
+공용 설정·JWT·예외 처리는 `global`로 분리했습니다. [전체 패키지 구조](docs/PACKAGE_STRUCTURE.md)를 참고하세요.
+
 ## 빠른 시작
+
+IntelliJ IDEA 또는 Spring Tools에서 이 폴더를 Gradle 프로젝트로 열고,
+`DokpamineBeApplication.java`의 `main()`을 실행하면 됩니다.
+
+Windows PowerShell:
+
+```powershell
+.\gradlew.bat bootRun
+```
+
+macOS / Linux:
+
 ```bash
+chmod +x gradlew
 ./gradlew bootRun
 ```
 - JDK 21이 필요합니다. Gradle은 wrapper가 내려받습니다.
 - 기본 `local` 프로필은 H2 파일 DB(`./data/`)를 쓰므로 DB 설치가 필요 없습니다.
 - 헬스 체크: http://localhost:8080/actuator/health
+
+## Swagger API 문서
+
+- Swagger UI: http://localhost:8080/swagger-ui/index.html
+- OpenAPI JSON: http://localhost:8080/v3/api-docs
+- `Authorize`에 회원가입·로그인 응답의 `accessToken`을 입력하면 인증이 필요한 API를 호출할 수 있습니다.
+
+컨트롤러의 `@Tag`, `@Operation`, `@ApiResponse`, `@Parameter`로 API 설명을 관리합니다.
+문서 페이지는 로그인 없이 열 수 있고, 기존 API의 JWT 인증 규칙은 유지됩니다.
+
+## 테스트와 빌드
+
+```powershell
+.\gradlew.bat test
+.\gradlew.bat build
+java -jar build/libs/dokpamine-be-0.0.1-SNAPSHOT.jar
+```
+
+운영 코드는 `src/main/java`, 테스트는 `src/test/java`에 있습니다.
+빌드와 실행에는 JDK만 필요하며 Kotlin이나 Python 설치는 필요하지 않습니다.
+테스트는 H2 메모리 DB를 사용하고 외부 도서 조회는 모의 응답으로 검증합니다.
+인터넷 연결은 최초 Gradle 및 의존성 다운로드 시 필요합니다.
 
 ### 환경 변수
 | 이름 | 용도 | 기본값 |
@@ -24,6 +63,8 @@
 
 ## 문서
 - [API 계약](docs/API.md)
+- [패키지 구조](docs/PACKAGE_STRUCTURE.md)
+- [Java 전환 내용](docs/MIGRATION.md)
 - [에이전트 작업 규칙](AGENTS.md)
 
 ## 구현 범위 (프로토타입 v0.1)
