@@ -1,0 +1,45 @@
+# PR 규칙 위반을 일찍 찾기 위해 조직 Secret GEMINI_API_KEY(BE에 공개)를 사용한다.
+# 무료 등급은 요청·토큰·일일 한도가 있고 입력이 제품 개선에 사용될 수 있어 민감정보를 보내지 않는다.
+# 모델은 vars.GEMINI_MODEL로 바꾼다. 기본값은 2026-11-09 공식 문서의 안정 Flash 모델이다.
+# https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash
+# https://ai.google.dev/gemini-api/docs/pricing#gemini-3.8-flash
+# 중지하려면 Actions에서 Gemini PR Review 워크플로를 Disable workflow로 끈다.
+name: Gemini PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: gemini-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # 참고용 리뷰이므로 외부 서비스나 코멘트 권한 문제가 필수 CI를 막지 않게 한다.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Review PR with Gemini
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEW_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 .github/scripts/gemini_review.py
