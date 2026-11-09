@@ -26,8 +26,8 @@ jobs:
       !github.event.pull_request.draft &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    # 스크립트 안의 API 타임아웃(gh 45초, Gemini 120초)이 먼저 끝나 경고로 처리되게 한다.
-    timeout-minutes: 10
+    # Gemini 최대 2회(각 240초)와 재시도 대기·gh 호출 뒤에도 건너뜀 코멘트를 남길 시간을 둔다.
+    timeout-minutes: 15
     # 필수 검사가 아니므로 API 오류는 스크립트가 경고로 넘기고, 스크립트 버그만 실패로 드러낸다.
     steps:
       - name: Checkout
