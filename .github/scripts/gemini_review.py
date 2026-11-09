@@ -139,8 +139,17 @@ def main():
                     "api", f"repos/{repo}/contents/{name}?ref={os.environ['BASE_SHA']}",
                     "--header", "Accept: application/vnd.github.raw+json",
                 ))
+            # 무료 등급 입력은 학습에 쓰일 수 있어 커밋 작성자 이메일은 빼고 메시지만 보낸다.
+            material = {
+                "title": metadata["title"],
+                "body": metadata["body"],
+                "commits": [
+                    {"messageHeadline": c["messageHeadline"], "messageBody": c["messageBody"]}
+                    for c in metadata["commits"]
+                ],
+            }
             prompt = "\n\n".join(rules) + (
-                "\n\n검토 자료 (JSON):\n" + json.dumps(metadata, ensure_ascii=False)
+                "\n\n검토 자료 (JSON):\n" + json.dumps(material, ensure_ascii=False)
                 + f"\n\nPR diff{' (200KB 제한으로 일부만 제공)' if truncated else ''}:\n{diff}"
             )
             review = generate_review(model, key, prompt)
