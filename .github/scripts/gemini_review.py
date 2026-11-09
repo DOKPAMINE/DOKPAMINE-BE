@@ -1,9 +1,11 @@
 """외부 리뷰 장애가 필수 CI를 막지 않도록 경고와 단일 코멘트로만 알린다."""
 
+import http.client
 import json
 import os
 import re
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 
@@ -11,6 +13,10 @@ import urllib.request
 MARKER = "<!-- gemini-review -->"
 DIFF_LIMIT = 200_000
 REVIEW_LIMIT = 45_000
+# 네트워크·API·JSON 오류만 건너뛰고, 스크립트 버그는 job 실패로 드러나게 한다.
+EXTERNAL_ERRORS = (
+    OSError, ValueError, http.client.HTTPException, subprocess.SubprocessError,
+)
 
 
 def warning(message):
@@ -47,7 +53,8 @@ def generate_review(model, key, prompt):
                 "키나 비밀 값은 출력에 인용하지 말고 발견 위치만 적으세요."
             )}]},
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 8192},
+            # 사고 토큰도 출력 한도에 포함되어 너무 낮으면 본문이 비거나 잘린다.
+            "generationConfig": {"maxOutputTokens": 16384},
         }, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json", "x-goog-api-key": key},
         method="POST",
@@ -56,23 +63,27 @@ def generate_review(model, key, prompt):
         with urllib.request.urlopen(request, timeout=120) as response:
             data = json.load(response)
     except urllib.error.HTTPError as error:
+        reason = " 무료 등급 한도를 초과했습니다." if error.code == 429 else ""
         warning(f"Gemini API HTTP {error.code}: 리뷰를 건너뜁니다.")
-        return f"리뷰를 건너뜀: Gemini API 오류(HTTP {error.code})가 발생했습니다."
-    except (urllib.error.URLError, TimeoutError, ValueError):
+        return f"리뷰를 건너뜀: Gemini API 오류(HTTP {error.code})가 발생했습니다.{reason}"
+    except EXTERNAL_ERRORS:
         warning("Gemini API 연결 또는 응답 처리 실패: 리뷰를 건너뜁니다.")
         return "리뷰를 건너뜀: Gemini API 연결 또는 응답 처리에 실패했습니다."
 
-    candidates = data.get("candidates") or []
-    candidate = candidates[0] if candidates else {}
-    parts = candidate.get("content", {}).get("parts", [])
+    # 프롬프트 차단이면 candidates가 없고, 안전 차단이면 content가 빠질 수 있다.
+    candidate = (data.get("candidates") or [{}])[0]
+    parts = (candidate.get("content") or {}).get("parts") or []
     review = "\n".join(
         part.get("text", "") for part in parts if not part.get("thought")
     ).strip()
+    finish = candidate.get("finishReason") or (data.get("promptFeedback") or {}).get("blockReason")
+    finish = finish if re.fullmatch(r"[A-Z_]+", str(finish)) else None
     if not review:
-        warning("Gemini API 빈 응답: 리뷰를 건너뜁니다.")
-        return "리뷰를 건너뜀: Gemini API가 빈 응답을 반환했습니다."
-    if candidate.get("finishReason") not in (None, "STOP"):
-        review += "\n\n※ 모델 응답이 중간에 종료되어 리뷰 내용이 불완전할 수 있습니다."
+        detail = f"({finish})" if finish else ""
+        warning(f"Gemini API 빈 응답{detail}: 리뷰를 건너뜁니다.")
+        return f"리뷰를 건너뜀: Gemini API가 빈 응답{detail}을 반환했습니다."
+    if finish not in (None, "STOP"):
+        review += f"\n\n※ 모델 응답이 중간에 종료되어({finish}) 리뷰 내용이 불완전할 수 있습니다."
     return review
 
 
@@ -113,11 +124,12 @@ def main():
     sha = os.environ["REVIEW_SHA"]
     model = os.environ["GEMINI_MODEL"]
     key = os.environ.get("GEMINI_API_KEY", "")
+    # 모델 이름이 요청 URL 경로에 들어가므로 설정 오류는 조용히 넘기지 않는다.
+    if not re.fullmatch(r"gemini-[a-zA-Z0-9.-]+", model):
+        print("::error::GEMINI_MODEL 형식이 올바르지 않습니다.")
+        sys.exit(1)
     truncated = False
     try:
-        if not re.fullmatch(r"gemini-[a-zA-Z0-9.-]+", model):
-            model = "설정 오류"
-            raise ValueError("invalid model")
         metadata = json.loads(gh(
             "pr", "view", number, "--repo", repo,
             "--json", "headRefOid,title,body,commits",
@@ -153,9 +165,9 @@ def main():
                 + f"\n\nPR diff{' (200KB 제한으로 일부만 제공)' if truncated else ''}:\n{diff}"
             )
             review = generate_review(model, key, prompt)
-    except Exception:
-        warning("리뷰 입력 또는 응답 처리에 실패하여 리뷰를 건너뜁니다.")
-        review = "리뷰를 건너뜀: 리뷰 입력 또는 응답 처리에 실패했습니다."
+    except EXTERNAL_ERRORS:
+        warning("리뷰 입력을 GitHub에서 읽지 못하여 리뷰를 건너뜁니다.")
+        review = "리뷰를 건너뜀: 리뷰 입력을 GitHub에서 읽지 못했습니다."
 
     try:
         # 취소 신호보다 늦게 끝난 이전 실행이 최신 코멘트를 덮어쓰지 않게 한다.
@@ -164,16 +176,13 @@ def main():
             warning("새 커밋이 있어 이전 실행의 코멘트를 갱신하지 않습니다.")
             return
         body = comment_body(model, sha, review, truncated)
-        for secret in (key, os.environ.get("GH_TOKEN", "")):
-            if secret:
-                body = body.replace(secret, "[비밀 값 삭제]")
+        # diff에 커밋된 키를 모델이 그대로 인용해도 코멘트로 다시 퍼지지 않게 한다.
+        if key:
+            body = body.replace(key, "[비밀 값 삭제]")
         publish_comment(repo, number, body)
-    except Exception:
+    except EXTERNAL_ERRORS:
         warning("리뷰 코멘트를 게시하지 못했습니다. 필수 CI는 계속 진행합니다.")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        warning("리뷰 실행 환경을 읽지 못해 리뷰를 건너뜁니다.")
+    main()
