@@ -18,8 +18,6 @@ springdoc:
 
 dokpamine:
   jwt:
-    # 운영에서는 반드시 DOKPAMINE_JWT_SECRET 환경 변수로 32바이트 이상 값을 넣는다.
-    secret: ${DOKPAMINE_JWT_SECRET:local-dev-secret-change-me-0123456789abcdef}
     ttl: 14d
   catalog:
     # 국립중앙도서관(쪽수·KDC 우선) → 카카오(국내 도서 제목·표지 보완) → Google Books → Open Library(마지막 대체).
@@ -48,6 +46,10 @@ spring:
     console:
       enabled: true
 
+dokpamine:
+  jwt:
+    secret: ${DOKPAMINE_JWT_SECRET:local-dev-secret-change-me-0123456789abcdef}
+
 ---
 spring:
   config:
@@ -57,3 +59,7 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/dokpamine}
     username: ${DB_USERNAME:dokpamine}
     password: ${DB_PASSWORD:dokpamine}
+
+dokpamine:
+  jwt:
+    secret: ${DOKPAMINE_JWT_SECRET:}

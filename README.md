@@ -52,7 +52,7 @@ java -jar build/libs/dokpamine-be-0.0.1-SNAPSHOT.jar
 ### 환경 변수
 | 이름 | 용도 | 기본값 |
 |---|---|---|
-| `DOKPAMINE_JWT_SECRET` | JWT 서명 키(32바이트 이상) | 개발용 값(운영에서는 반드시 교체) |
+| `DOKPAMINE_JWT_SECRET` | JWT 서명 키(UTF-8 기준 32바이트 이상, `prod` 필수) | `local`에서만 개발용 기본값 사용 |
 | `NLK_CERT_KEY` | 국립중앙도서관 ISBN 서지정보(쪽수·KDC 우선). [인증키 신청 안내](https://www.nl.go.kr/NL/contents/N31101010000.do) | 없음 |
 | `KAKAO_REST_API_KEY` | 카카오 ISBN 책 검색(제목·저자·출판사·표지 보완). [REST API 키 발급 안내](https://developers.kakao.com/docs/ko/app-setting/app#key) | 없음 |
 | `GOOGLE_BOOKS_KEY` | Google Books 조회. [API 키 발급 안내](https://developers.google.com/books/docs/v1/using#APIKey) | 없음 |

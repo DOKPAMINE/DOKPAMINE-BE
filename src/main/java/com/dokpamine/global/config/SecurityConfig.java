@@ -23,9 +23,11 @@ public class SecurityConfig {
     private final SecretKey secretKey;
 
     public SecurityConfig(JwtProperties properties) {
-        byte[] bytes = properties.secret().getBytes(StandardCharsets.UTF_8);
-        if (bytes.length < 32)
-            throw new IllegalArgumentException("dokpamine.jwt.secret 은 32바이트 이상이어야 합니다.");
+        String secret = properties.secret();
+        byte[] bytes = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length < 32 || secret.isBlank()) {
+            throw new IllegalArgumentException("DOKPAMINE_JWT_SECRET에 UTF-8 기준 32바이트 이상의 서명 키를 설정해 주세요.");
+        }
         this.secretKey = new SecretKeySpec(bytes, "HmacSHA256");
     }
 
