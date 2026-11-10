@@ -52,7 +52,7 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 1. 모든 PUT은 멱등이다. 같은 `id`로 몇 번을 보내도 서버에는 한 건만 남는다.
 2. 삭제는 `deleted: true`로 PUT한다(tombstone).
 3. 다른 사용자의 `id`이면 403을 돌려준다.
-4. 세션·감상·문장이 서버에 아직 없는 책을 참조하면 409 `BOOK_NOT_SYNCED`를 돌려준다. 클라이언트는 책 → 세션 → 감상 → 문장 순서로 올리고, 409이면 나중에 다시 시도한다.
+4. 세션·감상·문장이 서버에 아직 없는 책을 참조하면 409 `BOOK_NOT_SYNCED`를 돌려준다. 클라이언트는 책 → 세션 → 감상 → 문장 순서로 올리고, `BOOK_NOT_SYNCED`이면 나중에 다시 시도한다.
 5. 401이 오면 클라이언트는 대기 기록을 그대로 둔 채 재로그인을 안내한다.
 6. 새 세션은 요청의 `source`로 저장한다. 이미 저장된 세션은 저장된 값이 MANUAL이거나, 요청이 MANUAL이거나, 시간(`startedAt`, `endedAt`, `activeSeconds`)이 바뀌면 MANUAL로 저장하고, 그 밖에는 TIMER로 저장한다. 즉 서버는 TIMER로 올리는 것만 막고 MANUAL로 낮추는 요청은 받아들이며, MANUAL은 TIMER로 되돌릴 수 없다. 페이지(`startPage`, `endPage`), `deleted`, `bookId`만 바뀌는 것은 시간 수정으로 보지 않으므로, 요청이 TIMER면 TIMER를 유지한다. 같은 내용의 재전송도 시간 수정으로 보지 않으며, 시각은 DB와 같은 마이크로초 정밀도로 비교한다. 응답의 `source`는 저장된 값이다.
 
@@ -62,10 +62,19 @@ BookDto    {id, isbn?, title(1~200), author(1~100), publisher?, totalPages(≥1)
             deleted, createdAt, updatedAt}
 SessionDto {id, bookId, startedAt, endedAt, activeSeconds, startPage, endPage?(≤ book.totalPages),
             source: TIMER|MANUAL, deleted, createdAt}
-ReviewDto  {id, bookId, oneLine?(≤100), body?(≤5000), visibility: PRIVATE|PUBLIC, deleted, createdAt, updatedAt}
+ReviewDto  {id, bookId, oneLine?(≤100), body?(≤5000), visibility: PRIVATE|PUBLIC, deleted, createdAt, updatedAt, version?}
            // oneLine 과 body 중 하나는 있어야 함. 기본값 PRIVATE (NFR-09)
 QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, updatedAt}
 ```
+
+### 감상 버전과 충돌 처리 (NFR-05, NFR-09)
+
+- 새 감상의 PUT 요청에서는 `version`을 생략하거나 `null`로 보낸다. 생성된 감상과 마이그레이션 전 감상의 최초 서버 버전은 `0`이다. PUT 성공 응답과 본인 스냅샷의 `reviews`에는 현재 서버 버전이 포함된다.
+- 앱은 서버 버전을 로컬에 저장하고, 감상의 수정·삭제 요청에는 **편집을 시작할 때 기준으로 삼은 버전**을 함께 보낸다. 서버는 현재 버전과 일치할 때 변경을 저장하고 버전을 올린다. `updatedAt`은 충돌 판정의 순서 기준으로 사용하지 않는다.
+- 정규화한 수정 가능 필드와 마이크로초 정밀도의 `updatedAt`이 이미 저장된 값과 같으면 200과 현재 버전을 반환한다. 서버 버전은 그대로 유지된다.
+- 저장 상태를 바꾸려는 요청에서 버전이 누락되었거나 일치하지 않으면 `409 REVIEW_VERSION_CONFLICT`를 반환한다. 존재하지 않는 감상에 버전을 보낸 경우와 같은 감상에 대한 동시 쓰기가 충돌한 경우에도 같은 오류를 반환한다.
+- Android는 충돌한 요청의 자동 재시도를 멈추고 로컬 편집 내용을 초안으로 보존한다. `GET /api/sync/snapshot`으로 서버 상태를 가져와 사용자에게 보여 준다. 스냅샷에 감상이 없으면 삭제된 상태로 처리한다. 감상이 남아 있으면 사용자가 최신 내용과 공개 여부를 확인하고 다시 저장할 때 최신 버전으로 새 PUT을 만든다. 충돌한 요청의 버전만 바꿔 자동 재전송하면 비공개 상태를 덮어쓸 수 있다.
+- 버전 필드가 없는 구버전 앱도 신규 생성은 가능하지만 기존 감상을 수정하거나 삭제하려면 앱 업데이트가 필요하다.
 
 ## 라운지: 공개 감상 (FR-08, FR-09, FR-16)
 

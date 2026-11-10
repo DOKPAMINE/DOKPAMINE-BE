@@ -246,6 +246,60 @@ class RecordApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("NFR-09 지연된 공개 수정과 버전 없는 수정은 최신 비공개 감상을 바꾸지 않는다")
+    void staleReviewCannotBecomePublicAgain() throws Exception {
+        User owner = user(), reader = user();
+        UUID id = UUID.randomUUID(), bookId = book(owner).getId();
+        String path = "/api/reviews/" + id;
+        var create = new ReviewDto(
+                id, bookId, "공개 감상", null, Visibility.PUBLIC, false, MONDAY, MONDAY, null);
+        var created = request(put(path), owner, create, 200);
+        assertEquals(0, created.required("version").asLong());
+        assertEquals(created, request(put(path), owner, create, 200));
+        request(get("/api/feed/" + id), reader, null, 200);
+
+        long base = created.required("version").asLong();
+        var hide = new ReviewDto(
+                id, bookId, "공개 감상", null, Visibility.PRIVATE, false, MONDAY, MONDAY, base);
+        var hidden = request(put(path), owner, hide, 200);
+        assertEquals(base + 1, hidden.required("version").asLong());
+        assertEquals(hidden, request(put(path), owner, hide, 200));
+
+        var stale = new ReviewDto(
+                id, bookId, "오프라인 수정", null, Visibility.PUBLIC, false,
+                MONDAY, MONDAY.plusSeconds(60), base);
+        assertEquals("REVIEW_VERSION_CONFLICT",
+                request(put(path), owner, stale, 409).path("code").asString());
+        assertEquals("REVIEW_VERSION_CONFLICT",
+                request(put(path), owner, create, 409).path("code").asString());
+        request(put(path), reader, stale, 403);
+        assertEquals(1, snapshot(owner).path("reviews").size());
+        assertEquals(hidden, snapshot(owner).path("reviews").path(0));
+        assertEquals(0, request(get("/api/feed"), reader, null, 200).size());
+        request(get("/api/feed/" + id), reader, null, 404);
+        assertNull(reviews.findById(id).orElseThrow().getPublishedAt());
+    }
+
+    @Test
+    @DisplayName("NFR-05 오래된 감상은 삭제를 되돌리지 못하고 같은 삭제 요청은 재전송할 수 있다")
+    void staleReviewCannotUndoDeletion() throws Exception {
+        User owner = user();
+        UUID id = UUID.randomUUID(), bookId = book(owner).getId();
+        String path = "/api/reviews/" + id;
+        var create = new ReviewDto(
+                id, bookId, "감상", null, Visibility.PRIVATE, false, MONDAY, MONDAY, null);
+        long base = request(put(path), owner, create, 200).required("version").asLong();
+        var delete = new ReviewDto(
+                id, bookId, null, null, Visibility.PRIVATE, true, MONDAY, MONDAY, base);
+        var deleted = request(put(path), owner, delete, 200);
+        assertEquals(base + 1, deleted.required("version").asLong());
+        assertEquals(deleted, request(put(path), owner, delete, 200));
+        assertEquals("REVIEW_VERSION_CONFLICT",
+                request(put(path), owner, create, 409).path("code").asString());
+        assertEquals(0, snapshot(owner).path("reviews").size());
+    }
+
+    @Test
     @DisplayName("NFR-05 모든 기록에서 deleted 생략은 false이며 필수 숫자는 생략할 수 없다")
     void omittedFields() throws Exception {
         User owner = user();
@@ -260,7 +314,8 @@ class RecordApiTest extends ApiTestSupport {
                         Visibility.PRIVATE,
                         false,
                         MONDAY,
-                        MONDAY);
+                        MONDAY,
+                        null);
         var quote =
                 new QuoteDto(
                         UUID.randomUUID(), book.getId(), "문장", null, null, false, MONDAY, MONDAY);
@@ -326,7 +381,8 @@ class RecordApiTest extends ApiTestSupport {
                         Visibility.PRIVATE,
                         true,
                         MONDAY,
-                        MONDAY);
+                        MONDAY,
+                        null);
         var quote =
                 new QuoteDto(
                         UUID.randomUUID(), book.getId(), "문장", null, null, true, MONDAY, MONDAY);
@@ -362,7 +418,8 @@ class RecordApiTest extends ApiTestSupport {
                         Visibility.PUBLIC,
                         false,
                         MONDAY,
-                        MONDAY);
+                        MONDAY,
+                        null);
         String path = "/api/reviews/" + review.id();
         request(put(path), owner, review, 200);
         var before = reviews.findById(review.id()).orElseThrow();
@@ -394,7 +451,8 @@ class RecordApiTest extends ApiTestSupport {
                         Visibility.PRIVATE,
                         false,
                         MONDAY,
-                        MONDAY),
+                        MONDAY,
+                        null),
                 400);
         request(
                 put(path),
@@ -407,7 +465,8 @@ class RecordApiTest extends ApiTestSupport {
                         Visibility.PRIVATE,
                         false,
                         MONDAY,
-                        MONDAY),
+                        MONDAY,
+                        null),
                 400);
         JsonNode saved =
                 request(
@@ -421,7 +480,8 @@ class RecordApiTest extends ApiTestSupport {
                                 Visibility.PRIVATE,
                                 false,
                                 MONDAY,
-                                MONDAY),
+                                MONDAY,
+                                null),
                         200);
         assertEquals("요약", saved.path("oneLine").asString());
         assertEquals("본문", saved.path("body").asString());

@@ -121,9 +121,9 @@ public class RecordController {
             summary = "감상 동기화",
             description =
                     "한줄평이나 독후감을 저장합니다. visibility 생략 시 PRIVATE이며, 삭제하지 않은 감상에는 두 내용 중 하나가"
-                            + " 필요합니다(FR-08, NFR-09).")
+                            + " 필요합니다(FR-08, NFR-09). 수정과 삭제에는 편집 기준이 된 서버 version을 보냅니다.")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "저장된 감상"),
+        @ApiResponse(responseCode = "200", description = "저장된 감상과 서버 version"),
         @ApiResponse(
                 responseCode = "400",
                 description = "필드 검증 실패, 빈 감상 또는 ID 불일치",
@@ -141,7 +141,7 @@ public class RecordController {
                                 schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(
                 responseCode = "409",
-                description = "참조한 책이 아직 동기화되지 않음(BOOK_NOT_SYNCED)",
+                description = "참조한 책이 아직 동기화되지 않음(BOOK_NOT_SYNCED) 또는 감상 버전 충돌(REVIEW_VERSION_CONFLICT)",
                 content =
                         @Content(
                                 mediaType = "application/json",
