@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -34,7 +35,8 @@ class JwtStartupTest {
                 .withUserConfiguration(JwtTestConfiguration.class, SecurityConfig.class);
     }
 
-    @ParameterizedTest(name = "운영 서명 키가 유효하지 않으면 시작에 실패한다 [{index}]")
+    @DisplayName("FR-10 운영 JWT 서명 키가 유효하지 않으면 시작에 실패한다")
+    @ParameterizedTest(name = "{displayName} [{index}]")
     @NullAndEmptySource
     @ValueSource(strings = {"short", "                                "})
     void invalidProductionSecretStopsStartup(String secret) {
@@ -44,12 +46,14 @@ class JwtStartupTest {
     }
 
     @Test
+    @DisplayName("FR-10 운영 JWT 서명 키가 유효하면 인코더와 디코더가 로드된다")
     void productionStartsWithConfiguredSecret() {
         context("prod", "12345678901234567890123456789012").run(result ->
                 assertThat(result).hasSingleBean(JwtEncoder.class).hasSingleBean(JwtDecoder.class));
     }
 
     @Test
+    @DisplayName("FR-10 로컬 JWT 서명 키가 누락되면 개발용 기본 키로 시작한다")
     void localStartsWithDevelopmentDefault() {
         context("local", null).run(result ->
                 assertThat(result).hasSingleBean(JwtEncoder.class).hasSingleBean(JwtDecoder.class));
