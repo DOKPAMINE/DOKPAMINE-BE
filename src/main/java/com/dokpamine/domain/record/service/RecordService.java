@@ -18,11 +18,15 @@ import com.dokpamine.domain.record.repository.UserBookRepository;
 import com.dokpamine.global.apiPayload.exception.ApiException;
 import com.dokpamine.global.util.TextValues;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -134,7 +138,11 @@ public class RecordService {
         ownedBook(userId, dto.bookId());
         if (!dto.deleted() && TextValues.isBlank(dto.oneLine()) && TextValues.isBlank(dto.body()))
             throw ApiException.badRequest("한줄평이나 독후감 중 하나는 입력해야 해요.");
-        if (review == null)
+        String oneLine = TextValues.trimToNull(dto.oneLine());
+        String body = TextValues.trimToNull(dto.body());
+        boolean creating = review == null;
+        if (creating) {
+            if (dto.version() != null) throw reviewVersionConflict();
             review =
                     new Review(
                             dto.id(),
@@ -147,16 +155,43 @@ public class RecordService {
                             false,
                             dto.createdAt(),
                             dto.updatedAt());
+        } else {
+            // 응답을 잃은 PUT은 저장된 상태와 같으면 버전을 올리지 않는다(NFR-05).
+            if (review.getBookId().equals(dto.bookId())
+                    && Objects.equals(review.getOneLine(), oneLine)
+                    && Objects.equals(review.getBody(), body)
+                    && review.getVisibility() == dto.visibility()
+                    && review.getDeleted() == dto.deleted()
+                    && atDatabasePrecision(review.getUpdatedAt())
+                            .equals(atDatabasePrecision(dto.updatedAt()))) {
+                return new ReviewDto(review);
+            }
+            if (!review.getVersion().equals(dto.version())) throw reviewVersionConflict();
+        }
         review.setBookId(dto.bookId());
-        review.setOneLine(TextValues.trimToNull(dto.oneLine()));
-        review.setBody(TextValues.trimToNull(dto.body()));
+        review.setOneLine(oneLine);
+        review.setBody(body);
         if (dto.visibility() == Visibility.PUBLIC && review.getVisibility() != Visibility.PUBLIC)
             review.setPublishedAt(Instant.now());
         if (dto.visibility() == Visibility.PRIVATE) review.setPublishedAt(null);
         review.setVisibility(dto.visibility());
         review.setDeleted(dto.deleted());
         review.setUpdatedAt(dto.updatedAt());
-        return new ReviewDto(reviews.save(review));
+        try {
+            // 버전 비교 이후의 동시 변경도 DB에서 검증하고 저장된 버전을 응답에 담는다.
+            return new ReviewDto(reviews.saveAndFlush(review));
+        } catch (OptimisticLockingFailureException e) {
+            throw reviewVersionConflict();
+        } catch (DataIntegrityViolationException e) {
+            // 같은 UUID로 동시에 생성하면 먼저 커밋된 감상 한 건만 남긴다.
+            if (creating && e.getMostSpecificCause() instanceof SQLException sql
+                    && "23505".equals(sql.getSQLState())) throw reviewVersionConflict();
+            throw e;
+        }
+    }
+
+    private static ApiException reviewVersionConflict() {
+        return ApiException.conflict("REVIEW_VERSION_CONFLICT", "최신 감상을 확인한 뒤 다시 수정해 주세요.");
     }
 
     public QuoteDto upsertQuote(UUID userId, QuoteDto dto) {

@@ -48,8 +48,10 @@ class FeedApiTest extends ApiTestSupport {
                         Visibility.PUBLIC,
                         false,
                         MONDAY,
-                        MONDAY);
-        request(put("/api/reviews/" + review.getId()), a, dto, 200);
+                        MONDAY,
+                        review.getVersion());
+        long version = request(put("/api/reviews/" + review.getId()), a, dto, 200)
+                .path("version").asLong();
         for (int i = 0; i < 2; i++)
             assertEquals(
                     1,
@@ -78,7 +80,8 @@ class FeedApiTest extends ApiTestSupport {
                         Visibility.PRIVATE,
                         false,
                         MONDAY,
-                        MONDAY),
+                        MONDAY,
+                        version),
                 200);
         request(get("/api/feed/" + review.getId()), b, null, 404);
         request(post("/api/feed/" + review.getId() + "/like"), b, null, 404);

@@ -20,7 +20,8 @@ public record ReviewDto(
         @JsonDeserialize(using = PrivateVisibilityDeserializer.class) Visibility visibility,
         @JsonDeserialize(using = DefaultFalseBooleanDeserializer.class) Boolean deleted,
         @NotNull Instant createdAt,
-        @NotNull Instant updatedAt) {
+        @NotNull Instant updatedAt,
+        @PositiveOrZero Long version) {
     public ReviewDto {
         if (visibility == null) visibility = Visibility.PRIVATE;
         if (deleted == null) deleted = false;
@@ -35,6 +36,7 @@ public record ReviewDto(
                 value.getVisibility(),
                 value.getDeleted(),
                 value.getCreatedAt(),
-                value.getUpdatedAt());
+                value.getUpdatedAt(),
+                value.getVersion());
     }
 }

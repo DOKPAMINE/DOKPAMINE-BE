@@ -10,6 +10,10 @@ import java.util.UUID;
 public class Review {
     @Id private UUID id;
 
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
@@ -62,6 +66,10 @@ public class Review {
 
     public UUID getId() {
         return id;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 
     public UUID getUserId() {
