@@ -56,11 +56,13 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 5. 401이 오면 클라이언트는 대기 기록을 그대로 둔 채 재로그인을 안내한다.
 6. 새 세션은 요청의 `source`로 저장한다. 이미 저장된 세션은 저장된 값이 MANUAL이거나, 요청이 MANUAL이거나, 시간(`startedAt`, `endedAt`, `activeSeconds`)이 바뀌면 MANUAL로 저장하고, 그 밖에는 TIMER로 저장한다. 즉 서버는 TIMER로 올리는 것만 막고 MANUAL로 낮추는 요청은 받아들이며, MANUAL은 TIMER로 되돌릴 수 없다. 페이지(`startPage`, `endPage`), `deleted`, `bookId`만 바뀌는 것은 시간 수정으로 보지 않으므로, 요청이 TIMER면 TIMER를 유지한다. 같은 내용의 재전송도 시간 수정으로 보지 않으며, 시각은 DB와 같은 마이크로초 정밀도로 비교한다. 응답의 `source`는 저장된 값이다.
 
+7. 기존 세션의 삭제(`deleted: true`)와 동일한 삭제 요청의 재전송은 `endPage`가 현재 전체 쪽수를 넘어도 허용한다. 세션과 요청에 포함된 책의 소유권은 확인한다.
+
 ```text
 BookDto    {id, isbn?, title(1~200), author(1~100), publisher?, totalPages(≥1), genre, coverUrl?,
             status: WANT|READING|DONE, currentPage(≥0, ≤totalPages), completedCount, completedAt?,
             deleted, createdAt, updatedAt}
-SessionDto {id, bookId, startedAt, endedAt, activeSeconds, startPage, endPage?(≤ book.totalPages),
+SessionDto {id, bookId, startedAt, endedAt, activeSeconds, startPage, endPage?(규칙 7 참고, 그 외 ≤ book.totalPages),
             source: TIMER|MANUAL, deleted, createdAt}
 ReviewDto  {id, bookId, oneLine?(≤100), body?(≤5000), visibility: PRIVATE|PUBLIC, deleted, createdAt, updatedAt, version?}
            // oneLine 과 body 중 하나는 있어야 함. 기본값 PRIVATE (NFR-09)
