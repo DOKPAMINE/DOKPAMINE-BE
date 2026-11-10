@@ -55,8 +55,7 @@ public class BookLookupService {
         CatalogBook merged = null;
         for (var source : sources.entrySet()) {
             if (deadline - System.nanoTime() <= 0) break;
-            FutureTask<CatalogBook> task =
-                    new FutureTask<>(() -> safe(source.getKey(), source.getValue()));
+            FutureTask<CatalogBook> task = new FutureTask<>(source.getValue()::get);
             // 연결과 본문 읽기를 포함해 남은 시간만 기다린다.
             Thread.startVirtualThread(task);
             try {
@@ -70,7 +69,10 @@ public class BookLookupService {
                 Thread.currentThread().interrupt();
                 break;
             } catch (ExecutionException e) {
-                throw new IllegalStateException("도서 조회 작업이 실패했습니다.", e.getCause());
+                Throwable cause = e.getCause();
+                if (cause instanceof Error error) throw error;
+                // FR-01: 예외 메시지에는 키를 포함한 URL이 있을 수 있으므로 예외 종류만 남긴다.
+                log.warn("{} 도서 조회 실패: {}", source.getKey(), cause.getClass().getSimpleName());
             }
         }
         return merged;
@@ -198,16 +200,6 @@ public class BookLookupService {
                 genre,
                 https(text(book.path("cover"), "medium")),
                 "openlibrary");
-    }
-
-    private CatalogBook safe(String source, Supplier<CatalogBook> action) {
-        try {
-            return action.get();
-        } catch (Exception e) {
-            // FR-01: 예외 메시지에는 키를 포함한 URL이 있을 수 있으므로 예외 종류만 남긴다.
-            log.warn("{} 도서 조회 실패: {}", source, e.getClass().getSimpleName());
-            return null;
-        }
     }
 
     private static <T> T first(T a, T b) {
