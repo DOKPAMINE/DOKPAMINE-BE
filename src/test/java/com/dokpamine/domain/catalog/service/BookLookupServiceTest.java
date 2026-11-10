@@ -16,7 +16,10 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 @ExtendWith(OutputCaptureExtension.class)
 class BookLookupServiceTest {
@@ -129,12 +132,45 @@ class BookLookupServiceTest {
                                     return responses.get(source);
                                 })
                         .lookup("8937460440");
-        assertEquals(List.of("nlk", "kakao", "google", "openlibrary"), calls);
+        assertEquals(List.of("nlk", "kakao"), calls);
         assertEquals("국내 도서", book.title());
         assertEquals(312, book.totalPages());
         assertEquals("소설", book.genre());
         assertEquals("https://example.com/kakao.jpg", book.coverUrl());
         assertEquals("nlk", book.source());
+    }
+
+    @Test
+    @DisplayName("FR-01 조회 제한에 도달하면 확보한 정보를 반환하고 남은 조회처를 건너뛴다")
+    void lookupDeadline() throws InterruptedException {
+        List<String> calls = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch cancelled = new CountDownLatch(1);
+        String nlkResponse = nlk("312 p.");
+        BookLookupService service =
+                new BookLookupService(
+                        configured,
+                        json,
+                        (source, isbn) -> {
+                            calls.add(source);
+                            if (source.equals("nlk")) return nlkResponse;
+                            try {
+                                Thread.sleep(Duration.ofSeconds(5));
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                cancelled.countDown();
+                            }
+                            return null;
+                        });
+
+        CatalogBook book =
+                assertTimeoutPreemptively(
+                        Duration.ofSeconds(3), () -> service.lookup(ISBN, Duration.ofSeconds(1)));
+
+        assertEquals("nlk", book.source());
+        assertEquals(312, book.totalPages());
+        assertNull(book.coverUrl());
+        assertTrue(cancelled.await(1, TimeUnit.SECONDS));
+        assertEquals(List.of("nlk", "kakao"), calls);
     }
 
     @Test
