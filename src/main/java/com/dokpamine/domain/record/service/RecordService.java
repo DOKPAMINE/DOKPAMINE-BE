@@ -94,7 +94,8 @@ public class RecordService {
         UserBook book = ownedBook(userId, dto.bookId());
         if (dto.endedAt().isBefore(dto.startedAt()))
             throw ApiException.badRequest("종료 시각이 시작 시각보다 빨라요.");
-        if (dto.endPage() != null && dto.endPage() > book.getTotalPages()) {
+        boolean deletingExistingSession = session != null && dto.deleted();
+        if (!deletingExistingSession && dto.endPage() != null && dto.endPage() > book.getTotalPages()) {
             throw ApiException.badRequest("종료 페이지가 전체 쪽수(" + book.getTotalPages() + ")를 넘어요.");
         }
         SessionSource source = dto.source();

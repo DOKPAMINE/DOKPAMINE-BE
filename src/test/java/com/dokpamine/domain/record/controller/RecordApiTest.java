@@ -134,6 +134,35 @@ class RecordApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("NFR-05 전체 쪽수를 줄인 뒤에도 소유자가 기존 세션을 삭제하면 랭킹에서 제외된다")
+    void deleteSessionAfterReducingTotalPages() throws Exception {
+        User owner = user("참여", true);
+        UserBook book = book(owner);
+        var session = dto(book.getId(), MONDAY);
+        save(owner, session);
+
+        var updatedBook = new BookDto(
+                book.getId(), null, "책", "저자", null, 40, "소설", null,
+                BookStatus.READING, 0, 0, null, false, MONDAY, MONDAY);
+        request(put("/api/books/" + book.getId()), owner, updatedBook, 200);
+
+        String sessionPath = "/api/sessions/" + session.id();
+        String rankingPath = "/api/ranking/weekly?weekStart=2026-10-26";
+        var deletion = changed(session, "deleted", true);
+        request(put(sessionPath), owner, session, 400);
+        var newSessionDeletion = changed(dto(book.getId(), MONDAY), "deleted", true);
+        request(put("/api/sessions/" + newSessionDeletion.get("id")), owner, newSessionDeletion, 400);
+        request(put(sessionPath), user(), deletion, 403);
+        assertEquals(1, request(get(rankingPath), owner, null, 200).path("top").size());
+
+        for (int i = 0; i < 2; i++) {
+            assertTrue(request(put(sessionPath), owner, deletion, 200).path("deleted").asBoolean());
+        }
+        assertEquals(0, snapshot(owner).path("sessions").size());
+        assertEquals(0, request(get(rankingPath), owner, null, 200).path("top").size());
+    }
+
+    @Test
     @DisplayName("NFR-05 검증 실패와 타인 덮어쓰기는 원래 세션을 보존한다")
     void rejectInvalidUpdates() throws Exception {
         User owner = user(), other = user();
