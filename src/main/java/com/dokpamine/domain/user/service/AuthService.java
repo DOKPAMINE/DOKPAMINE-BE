@@ -18,15 +18,12 @@ import org.springframework.security.oauth2.jwt.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 
 @Service
 @Transactional(readOnly = true)
 public class AuthService {
-    private static final int BCRYPT_MAX_PASSWORD_BYTES = 72;
-
     private final UserRepository users;
     private final PasswordEncoder passwords;
     private final JwtEncoder encoder;
@@ -45,9 +42,6 @@ public class AuthService {
 
     @Transactional
     public TokenResponse signup(SignupRequest request) {
-        if (request.password().getBytes(StandardCharsets.UTF_8).length > BCRYPT_MAX_PASSWORD_BYTES) {
-            throw ApiException.badRequest("비밀번호를 UTF-8 기준 72바이트 이하로 입력해 주세요.");
-        }
         String email = TextValues.trim(request.email()).toLowerCase(Locale.ROOT);
         if (users.existsByEmail(email))
             throw ApiException.conflict("EMAIL_TAKEN", "이미 가입된 이메일이에요.");

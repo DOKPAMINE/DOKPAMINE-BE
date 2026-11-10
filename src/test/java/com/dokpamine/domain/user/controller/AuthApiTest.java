@@ -67,8 +67,10 @@ class AuthApiTest extends ApiTestSupport {
                         null,
                         Map.of("email", email, "password", "가".repeat(25), "nickname", "독자"),
                         400);
-        assertEquals("BAD_REQUEST", error.path("code").asString());
-        assertEquals("비밀번호를 UTF-8 기준 72바이트 이하로 입력해 주세요.", error.path("message").asString());
+        assertEquals("VALIDATION_FAILED", error.path("code").asString());
+        assertEquals(
+                "password: 비밀번호를 UTF-8 기준 72바이트 이하로 입력해 주세요.",
+                error.path("message").asString());
 
         request(
                 post("/api/auth/signup"),
