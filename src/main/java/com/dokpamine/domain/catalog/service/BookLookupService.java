@@ -14,13 +14,16 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.Supplier;
 import java.util.regex.*;
 
 @Service
 public class BookLookupService {
     private static final Logger log = LoggerFactory.getLogger(BookLookupService.class);
+    private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(8);
     private final CatalogProperties properties;
     private final JsonMapper json;
     private final CatalogFetcher fetcher;
@@ -33,32 +36,68 @@ public class BookLookupService {
     }
 
     public CatalogBook lookup(String rawIsbn) {
+        return lookup(rawIsbn, LOOKUP_TIMEOUT);
+    }
+
+    CatalogBook lookup(String rawIsbn, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
         String isbn = Isbn.normalize(rawIsbn);
         if (isbn == null) throw ApiException.badRequest("올바른 ISBN 이 아니에요.");
-        List<CatalogBook> results = new ArrayList<>();
+        Map<String, Supplier<CatalogBook>> sources = new LinkedHashMap<>();
         if (!TextValues.isBlank(properties.nlkCertKey()))
-            add(results, safe("nlk", () -> nlk(isbn)));
+            sources.put("nlk", () -> nlk(isbn));
         if (!TextValues.isBlank(properties.kakaoRestApiKey()))
-            add(results, safe("kakao", () -> kakao(isbn)));
+            sources.put("kakao", () -> kakao(isbn));
         if (!TextValues.isBlank(properties.googleBooksKey()))
-            add(results, safe("google", () -> google(isbn)));
-        add(results, safe("openlibrary", () -> openLibrary(isbn)));
-        if (results.isEmpty()) return null;
-        CatalogBook merged = results.getFirst();
-        for (int i = 1; i < results.size(); i++) {
-            CatalogBook b = results.get(i);
-            merged =
-                    new CatalogBook(
-                            isbn,
-                            first(merged.title(), b.title()),
-                            first(merged.author(), b.author()),
-                            first(merged.publisher(), b.publisher()),
-                            first(merged.totalPages(), b.totalPages()),
-                            first(merged.genre(), b.genre()),
-                            first(merged.coverUrl(), b.coverUrl()),
-                            merged.source());
+            sources.put("google", () -> google(isbn));
+        sources.put("openlibrary", () -> openLibrary(isbn));
+
+        CatalogBook merged = null;
+        for (var source : sources.entrySet()) {
+            if (deadline - System.nanoTime() <= 0) break;
+            FutureTask<CatalogBook> task =
+                    new FutureTask<>(() -> safe(source.getKey(), source.getValue()));
+            // 연결과 본문 읽기를 포함해 남은 시간만 기다린다.
+            Thread.startVirtualThread(task);
+            try {
+                merged = merge(merged, task.get(deadline - System.nanoTime(), TimeUnit.NANOSECONDS));
+                if (isComplete(merged)) break;
+            } catch (TimeoutException e) {
+                task.cancel(true);
+                break;
+            } catch (InterruptedException e) {
+                task.cancel(true);
+                Thread.currentThread().interrupt();
+                break;
+            } catch (ExecutionException e) {
+                throw new IllegalStateException("도서 조회 작업이 실패했습니다.", e.getCause());
+            }
         }
         return merged;
+    }
+
+    private static CatalogBook merge(CatalogBook preferred, CatalogBook fallback) {
+        if (preferred == null) return fallback;
+        if (fallback == null) return preferred;
+        return new CatalogBook(
+                preferred.isbn(),
+                first(preferred.title(), fallback.title()),
+                first(preferred.author(), fallback.author()),
+                first(preferred.publisher(), fallback.publisher()),
+                first(preferred.totalPages(), fallback.totalPages()),
+                first(preferred.genre(), fallback.genre()),
+                first(preferred.coverUrl(), fallback.coverUrl()),
+                preferred.source());
+    }
+
+    private static boolean isComplete(CatalogBook book) {
+        return book != null
+                && book.title() != null
+                && book.author() != null
+                && book.publisher() != null
+                && book.totalPages() != null
+                && book.genre() != null
+                && book.coverUrl() != null;
     }
 
     private CatalogBook nlk(String isbn) {
@@ -169,10 +208,6 @@ public class BookLookupService {
             log.warn("{} 도서 조회 실패: {}", source, e.getClass().getSimpleName());
             return null;
         }
-    }
-
-    private static void add(List<CatalogBook> list, CatalogBook book) {
-        if (book != null) list.add(book);
     }
 
     private static <T> T first(T a, T b) {
