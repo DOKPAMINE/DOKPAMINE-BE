@@ -19,7 +19,7 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 
 | Method | Path | Body | 응답 |
 |---|---|---|---|
-| POST | `/api/auth/signup` | `{email, password(8~64), nickname(1~30)}` | 201 `TokenResponse` · 409 `EMAIL_TAKEN` |
+| POST | `/api/auth/signup` | `{email, password(8~64자, UTF-8 최대 72바이트), nickname(1~30)}` | 201 `TokenResponse` · 400 `BAD_REQUEST` (비밀번호 72바이트 초과) · 409 `EMAIL_TAKEN` |
 | POST | `/api/auth/login` | `{email, password}` | 200 `TokenResponse` · 401 `INVALID_CREDENTIALS` |
 | GET | `/api/me` | - | `MeResponse` |
 | PATCH | `/api/me` | `{nickname?, rankingOptIn?}` | `MeResponse` |
