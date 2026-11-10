@@ -58,6 +58,28 @@ class AuthApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-10 한글 비밀번호가 72바이트를 넘으면 400을 반환하고 정확히 72바이트면 가입한다")
+    void validatesSignupPasswordByteLength() throws Exception {
+        String email = UUID.randomUUID() + "@test.com";
+        JsonNode error =
+                request(
+                        post("/api/auth/signup"),
+                        null,
+                        Map.of("email", email, "password", "가".repeat(25), "nickname", "독자"),
+                        400);
+        assertEquals("VALIDATION_FAILED", error.path("code").asString());
+        assertEquals(
+                "password: 비밀번호를 UTF-8 기준 72바이트 이하로 입력해 주세요.",
+                error.path("message").asString());
+
+        request(
+                post("/api/auth/signup"),
+                null,
+                Map.of("email", email, "password", "가".repeat(24), "nickname", "독자"),
+                201);
+    }
+
+    @Test
     @DisplayName("FR-10 개인정보 수정과 입력 검증 및 JWT 접근 제한을 유지한다")
     void updateAndValidate() throws Exception {
         var user = user();
