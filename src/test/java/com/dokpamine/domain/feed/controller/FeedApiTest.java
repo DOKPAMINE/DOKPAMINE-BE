@@ -88,6 +88,27 @@ class FeedApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-08 NFR-09 삭제된 책과 비공개·삭제 감상을 제외한 뒤 최신 100건을 반환한다")
+    void feedLimitsAfterFiltering() throws Exception {
+        User me = user();
+        List<String> expectedIds = new ArrayList<>();
+        for (int i = 0; i <= 100; i++) {
+            Review review = review(me, book(me), Visibility.PUBLIC, MONDAY.minusSeconds(i));
+            if (i < 100) expectedIds.add(review.getId().toString());
+        }
+        UserBook deletedBook = book(me);
+        deletedBook.setDeleted(true);
+        review(me, deletedBook, Visibility.PUBLIC, MONDAY.plusSeconds(1));
+        review(me, book(me), Visibility.PRIVATE, null);
+        review(me, book(me), Visibility.PUBLIC, MONDAY.plusSeconds(2)).setDeleted(true);
+        em.flush();
+        em.clear();
+
+        JsonNode feed = request(get("/api/feed"), me, null, 200);
+        assertEquals(expectedIds, list(feed).stream().map(item -> item.path("id").asString()).toList());
+    }
+
+    @Test
     @DisplayName("FR-16 ISBN10과 ISBN13 사본은 제목이 달라도 묶고 공개 응답과 좋아요를 보존한다")
     void isbnGroupsAndFields() throws Exception {
         User me = user(), other = user();

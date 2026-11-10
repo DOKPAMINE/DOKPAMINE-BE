@@ -11,6 +11,7 @@ import com.dokpamine.domain.record.entity.Visibility;
 import com.dokpamine.domain.record.repository.ReviewRepository;
 import com.dokpamine.global.apiPayload.exception.ApiException;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,12 +32,7 @@ public class FeedService {
 
     public List<FeedItem> list(UUID me) {
         return items.toItems(
-                reviews
-                        .findAllByVisibilityAndDeletedFalseOrderByPublishedAtDesc(Visibility.PUBLIC)
-                        .stream()
-                        .limit(100)
-                        .toList(),
-                me);
+                reviews.findFeedReviews(Visibility.PUBLIC, PageRequest.of(0, 100)), me);
     }
 
     public FeedItem detail(UUID me, UUID id) {
