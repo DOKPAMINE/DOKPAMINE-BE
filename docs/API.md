@@ -56,15 +56,17 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 5. 401이 오면 클라이언트는 대기 기록을 그대로 둔 채 재로그인을 안내한다.
 6. 새 세션은 요청의 `source`로 저장한다. 이미 저장된 세션은 저장된 값이 MANUAL이거나, 요청이 MANUAL이거나, 시간(`startedAt`, `endedAt`, `activeSeconds`)이 바뀌면 MANUAL로 저장하고, 그 밖에는 TIMER로 저장한다. 즉 서버는 TIMER로 올리는 것만 막고 MANUAL로 낮추는 요청은 받아들이며, MANUAL은 TIMER로 되돌릴 수 없다. 페이지(`startPage`, `endPage`), `deleted`, `bookId`만 바뀌는 것은 시간 수정으로 보지 않으므로, 요청이 TIMER면 TIMER를 유지한다. 같은 내용의 재전송도 시간 수정으로 보지 않으며, 시각은 DB와 같은 마이크로초 정밀도로 비교한다. 응답의 `source`는 저장된 값이다.
 
-7. 기존 세션의 삭제(`deleted: true`)와 동일한 삭제 요청의 재전송은 `endPage`가 현재 전체 쪽수를 넘어도 허용한다. 세션과 요청에 포함된 책의 소유권은 확인한다.
+7. 기존 세션의 삭제(`deleted: true`)와 동일한 삭제 요청의 재전송은 `startPage`·`endPage`가 현재 전체 쪽수를 넘어도 허용한다. 세션과 요청에 포함된 책의 소유권은 확인한다. 그 외 세션 PUT은 `startPage`와 null이 아닌 `endPage`가 책의 `totalPages`를 넘으면 400이다.
 8. 책 삭제가 반영되면 다음 스냅샷부터 해당 책의 세션·감상·문장도 제외된다. 해당 책의 하위 기록 삭제 PUT과 재전송에는 기존 검증 규칙을 적용한다.
 9. 삭제된 책의 UUID는 tombstone으로 유지하며 이후 유효한 책 PUT은 소유권 확인 후 200과 **현재 저장된 삭제 상태의 BookDto**를 반환한다. 요청의 `deleted`·`updatedAt`과 무관하게 저장된 책의 모든 필드를 보존한다. 기기 시각 차이로 오래된 요청에 더 큰 `updatedAt`이 붙을 수 있으므로 시각으로 복원 여부를 판단하지 않는다. 같은 삭제 요청의 재전송도 동일하다(NFR-05, NFR-09). 삭제한 책을 다시 추가하려면 새 UUID를 사용한다. Android는 PUT 응답의 `deleted: true`를 서버 상태로 반영해야 한다. 엔드포인트·DTO 필드·상태 코드 변경은 없다.
+
+10. 삭제되지 않은 책의 PUT에서 `totalPages`가 그 책의 **삭제되지 않은 세션 중 어느 하나의 `startPage` 또는 null이 아닌 `endPage`보다 작으면 400 `BAD_REQUEST`**로 거부하고 기존 책과 세션을 보존한다(NFR-04, NFR-05). 경계값과 같은 쪽수는 허용한다. 현재 진도가 낮아도 과거 회차의 세션을 임의로 자르거나 삭제하지 않는다. 삭제된 세션은 이 검증에서 제외하며, 책 삭제 PUT은 허용한다. 책 쪽수 수정과 세션 저장은 같은 책 단위로 직렬화한다. Android는 이 400을 받으면 쪽수 수정을 완료 처리하지 말고 입력을 보존해 수정하도록 안내해야 한다. DTO와 스키마 변경은 없다.
 
 ```text
 BookDto    {id, isbn?, title(1~200), author(1~100), publisher?, totalPages(≥1), genre, coverUrl?,
             status: WANT|READING|DONE, currentPage(≥0, ≤totalPages), completedCount, completedAt?,
             deleted, createdAt, updatedAt}
-SessionDto {id, bookId, startedAt, endedAt, activeSeconds, startPage, endPage?(규칙 7 참고, 그 외 ≤ book.totalPages),
+SessionDto {id, bookId, startedAt, endedAt, activeSeconds, startPage(규칙 7 참고), endPage?(규칙 7 참고),
             source: TIMER|MANUAL, deleted, createdAt}
 ReviewDto  {id, bookId, oneLine?(≤100), body?(≤5000), visibility: PRIVATE|PUBLIC, deleted, createdAt, updatedAt, version?}
            // oneLine 과 body 중 하나는 있어야 함. 기본값 PRIVATE (NFR-09)

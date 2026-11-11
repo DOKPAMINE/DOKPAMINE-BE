@@ -87,6 +87,10 @@ public class RecordService {
         }
         // NFR-05, NFR-09: 기기 시각으로 요청 순서를 보장할 수 없어 삭제된 책은 복원하지 않는다.
         if (book.getDeleted()) return new BookDto(book);
+        // NFR-04, NFR-05: 기존 세션을 자르지 않고 재전송·복원 가능한 페이지 범위를 보존한다.
+        if (!dto.deleted() && sessions.existsOutsidePageRange(dto.id(), dto.totalPages())) {
+            throw ApiException.badRequest("전체 쪽수는 저장된 독서 세션의 시작·종료 페이지보다 작을 수 없어요.");
+        }
         book.setIsbn(dto.isbn());
         book.setTitle(TextValues.trim(dto.title()));
         book.setAuthor(TextValues.trim(dto.author()));
@@ -106,10 +110,16 @@ public class RecordService {
     public SessionDto upsertSession(UUID userId, SessionDto dto) {
         ReadingSession session = sessions.findById(dto.id()).orElse(null);
         if (session != null) requireOwner(session.getUserId(), userId);
-        UserBook book = ownedBook(userId, dto.bookId());
+        // 책 쪽수 수정과 세션 저장을 직렬화해 검증 직후 범위가 바뀌지 않게 한다(NFR-04).
+        UserBook book = books.findByIdForUpdate(dto.bookId())
+                .orElseThrow(() -> ApiException.conflict("BOOK_NOT_SYNCED", "책 정보가 아직 서버에 없어요."));
+        requireOwner(book.getUserId(), userId);
         if (dto.endedAt().isBefore(dto.startedAt()))
             throw ApiException.badRequest("종료 시각이 시작 시각보다 빨라요.");
         boolean deletingExistingSession = session != null && dto.deleted();
+        if (!deletingExistingSession && dto.startPage() > book.getTotalPages()) {
+            throw ApiException.badRequest("시작 페이지가 전체 쪽수(" + book.getTotalPages() + ")를 넘어요.");
+        }
         if (!deletingExistingSession && dto.endPage() != null && dto.endPage() > book.getTotalPages()) {
             throw ApiException.badRequest("종료 페이지가 전체 쪽수(" + book.getTotalPages() + ")를 넘어요.");
         }
