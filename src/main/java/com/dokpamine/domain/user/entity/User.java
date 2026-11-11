@@ -2,10 +2,14 @@ package com.dokpamine.domain.user.entity;
 
 import jakarta.persistence.*;
 
+import org.hibernate.annotations.DynamicUpdate;
+
 import java.time.Instant;
 import java.util.UUID;
 
+// FR-15: 동시 닉네임 수정이 다른 요청의 랭킹 참여 해제를 덮어쓰지 않도록 변경한 열만 저장한다.
 @Entity
+@DynamicUpdate
 @Table(name = "users")
 public class User {
     @Id private UUID id;
