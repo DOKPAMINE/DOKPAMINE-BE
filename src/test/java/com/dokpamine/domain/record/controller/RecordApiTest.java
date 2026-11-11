@@ -226,7 +226,11 @@ class RecordApiTest extends ApiTestSupport {
         var updatedBook = new BookDto(
                 book.getId(), null, "책", "저자", null, 40, "소설", null,
                 BookStatus.READING, 0, 0, null, false, MONDAY, MONDAY);
-        request(put("/api/books/" + book.getId()), owner, updatedBook, 200);
+        // 이전 서버 버전에서 이미 축소된 데이터도 삭제 동기화할 수 있어야 한다.
+        UserBook legacy = books.findById(book.getId()).orElseThrow();
+        legacy.setTotalPages(updatedBook.totalPages());
+        books.saveAndFlush(legacy);
+        em.clear();
 
         String sessionPath = "/api/sessions/" + session.id();
         String rankingPath = "/api/ranking/weekly?weekStart=2026-10-26";

@@ -17,17 +17,22 @@ import com.dokpamine.domain.record.entity.ReadingSession;
 import com.dokpamine.domain.record.entity.SessionSource;
 import com.dokpamine.domain.record.entity.UserBook;
 import com.dokpamine.domain.record.repository.RecordInsertRepository;
+import com.dokpamine.domain.record.service.RecordService;
 import com.dokpamine.domain.user.entity.User;
 import com.dokpamine.support.ApiTestSupport;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.stubbing.Answer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import tools.jackson.databind.JsonNode;
 
@@ -42,6 +47,58 @@ import java.util.concurrent.atomic.AtomicBoolean;
         + "jdbc:h2:mem:record-insert-race;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}")
 class RecordInsertRaceApiTest extends ApiTestSupport {
     @MockitoSpyBean private RecordInsertRepository inserts;
+    @MockitoSpyBean private RecordService recordService;
+    @Autowired private PlatformTransactionManager transactionManager;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @DisplayName("NFR-04 NFR-05 쪽수 축소와 세션 저장이 경합해도 스냅샷 페이지 범위를 지킨다")
+    void serializesPageShrinkAndSessionWrite(boolean bookFirst) throws Exception {
+        User owner = user();
+        UserBook book = book(owner);
+        var shrink = json.valueToTree(new BookDto(book)).asObject().put("totalPages", 100);
+        var session = new SessionDto(UUID.randomUUID(), book.getId(), MONDAY,
+                MONDAY.plusSeconds(600), 600, 30, 200, SessionSource.TIMER, false, MONDAY);
+        String bookPath = "/api/books/" + book.getId();
+        String sessionPath = "/api/sessions/" + session.id();
+        CountDownLatch firstLocked = new CountDownLatch(1);
+        CountDownLatch secondAttempted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var accepted = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
+                books.findByIdForUpdate(book.getId()).orElseThrow();
+                firstLocked.countDown();
+                try {
+                    assertTrue(releaseFirst.await(10, TimeUnit.SECONDS));
+                    return putRecord(bookFirst ? bookPath : sessionPath,
+                            owner, bookFirst ? shrink : session, 200);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }));
+            try {
+                assertTrue(firstLocked.await(10, TimeUnit.SECONDS));
+                var rejected = executor.submit(() -> {
+                    secondAttempted.countDown();
+                    return putRecord(bookFirst ? sessionPath : bookPath,
+                            owner, bookFirst ? session : shrink, 400);
+                });
+                assertTrue(secondAttempted.await(10, TimeUnit.SECONDS));
+                releaseFirst.countDown();
+                accepted.get(10, TimeUnit.SECONDS);
+                assertEquals("BAD_REQUEST", rejected.get(10, TimeUnit.SECONDS).path("code").asString());
+            } finally {
+                releaseFirst.countDown();
+            }
+        }
+        JsonNode snapshot = snapshot(owner);
+        assertEquals(bookFirst ? 100 : 240, snapshot.path("books").path(0).path("totalPages").asInt());
+        assertEquals(bookFirst ? 0 : 1, snapshot.path("sessions").size());
+        if (!bookFirst) {
+            putRecord(sessionPath, owner, session, 200);
+            assertEquals(200, snapshot.path("sessions").path(0).path("endPage").asInt());
+        }
+    }
 
     @ParameterizedTest
     @EnumSource(RecordType.class)
@@ -79,7 +136,8 @@ class RecordInsertRaceApiTest extends ApiTestSupport {
         };
         switch (type) {
             case BOOK -> doAnswer(pauseFirstInsert).when(inserts).insert(any(UserBook.class));
-            case SESSION -> doAnswer(pauseFirstInsert).when(inserts).insert(any(ReadingSession.class));
+            // 같은 책의 저장은 잠금으로 직렬화되므로 서비스 진입 전 재시도를 겹친다.
+            case SESSION -> doAnswer(pauseFirstInsert).when(recordService).upsertSession(any(), any());
             case QUOTE -> doAnswer(pauseFirstInsert).when(inserts).insert(any(Quote.class));
         }
 

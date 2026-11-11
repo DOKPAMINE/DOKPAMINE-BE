@@ -12,6 +12,10 @@ import java.util.*;
 public interface ReadingSessionRepository extends JpaRepository<ReadingSession, UUID> {
     List<ReadingSession> findAllByUserIdAndDeletedFalse(UUID userId);
 
+    @Query("select count(s) > 0 from ReadingSession s where s.bookId = :bookId"
+            + " and s.deleted = false and (s.startPage > :totalPages or s.endPage > :totalPages)")
+    boolean existsOutsidePageRange(UUID bookId, int totalPages);
+
     @Query(
             """
                 select s from ReadingSession s join UserBook b on b.id = s.bookId
