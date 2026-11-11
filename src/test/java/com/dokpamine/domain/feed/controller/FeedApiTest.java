@@ -89,6 +89,26 @@ class FeedApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-09 NFR-09 비공개·삭제 감상의 좋아요 등록과 취소는 404이며 기존 좋아요를 보존한다")
+    void hiddenReviewBlocksLikeChanges() throws Exception {
+        User owner = user(), reader = user();
+        for (boolean deleted : List.of(false, true)) {
+            Review review = review(owner, book(owner), Visibility.PUBLIC, MONDAY);
+            String path = "/api/feed/" + review.getId() + "/like";
+            request(post(path), reader, null, 200);
+            review = reviews.findById(review.getId()).orElseThrow();
+            if (deleted) review.setDeleted(true);
+            else review.setVisibility(Visibility.PRIVATE);
+            em.flush();
+            em.clear();
+
+            request(post(path), reader, null, 404);
+            request(delete(path), reader, null, 404);
+            assertEquals(1, likes.countByIdReviewId(review.getId()));
+        }
+    }
+
+    @Test
     @DisplayName("FR-08 FR-09 삭제된 책의 감상 상세와 좋아요 등록·취소는 작성자와 타인 모두에게 404다")
     void deletedBookBlocksReviewAndLikes() throws Exception {
         User owner = user(), reader = user();
