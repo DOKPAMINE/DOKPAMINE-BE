@@ -38,7 +38,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-@TestPropertySource(properties = "spring.datasource.url=jdbc:h2:mem:record-insert-race;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1")
+@TestPropertySource(properties = "spring.datasource.url=${dokpamine.test.postgresql.url:"
+        + "jdbc:h2:mem:record-insert-race;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1}")
 class RecordInsertRaceApiTest extends ApiTestSupport {
     @MockitoSpyBean private RecordInsertRepository inserts;
 

@@ -44,8 +44,31 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs += '-parameters'
 }
 
-tasks.named('test') {
+tasks.withType(Test).configureEach {
     useJUnitPlatform()
     // Java 21에서 테스트 중 동적 attach 없이 Mockito를 사용할 수 있도록 시작 시 로드한다.
     jvmArgs "-javaagent:${configurations.mockitoAgent.singleFile}"
+}
+
+tasks.register('postgresqlTest', Test) {
+    group = 'verification'
+    description = 'Runs Flyway, feed search, and concurrent record writes against PostgreSQL.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+
+    filter {
+        includeTestsMatching 'FeedApiTest'
+        includeTestsMatching 'RecordInsertRaceApiTest'
+    }
+
+    systemProperty 'dokpamine.test.postgresql.url', providers.environmentVariable('POSTGRES_TEST_URL')
+            .orElse('jdbc:postgresql://127.0.0.1:5432/dokpamine_test').get()
+    systemProperty 'spring.datasource.driver-class-name', 'org.postgresql.Driver'
+    systemProperty 'spring.datasource.username', providers.environmentVariable('POSTGRES_TEST_USER')
+            .orElse('dokpamine').get()
+    systemProperty 'spring.datasource.password', providers.environmentVariable('POSTGRES_TEST_PASSWORD')
+            .orElse('dokpamine').get()
+
+    // DB 상태는 Gradle이 추적할 수 없으므로 빈 DB에서도 검증을 매번 실행한다.
+    doNotTrackState('PostgreSQL state is external to Gradle')
 }
