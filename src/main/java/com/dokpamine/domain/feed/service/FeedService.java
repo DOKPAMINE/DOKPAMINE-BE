@@ -2,7 +2,6 @@ package com.dokpamine.domain.feed.service;
 
 import com.dokpamine.domain.feed.dto.response.FeedItem;
 import com.dokpamine.domain.feed.dto.response.LikeResponse;
-import com.dokpamine.domain.feed.entity.ReviewLike;
 import com.dokpamine.domain.feed.entity.ReviewLikeId;
 import com.dokpamine.domain.feed.repository.ReviewLikeRepository;
 import com.dokpamine.domain.feed.support.FeedItemMapper;
@@ -44,8 +43,8 @@ public class FeedService {
     @Transactional
     public LikeResponse like(UUID me, UUID id) {
         Review review = visibleReview(id, me);
-        ReviewLikeId key = new ReviewLikeId(review.getId(), me);
-        if (!likes.existsById(key)) likes.save(new ReviewLike(key));
+        // FR-09 동시 재전송도 트랜잭션을 실패시키지 않도록 DB에서 중복을 처리한다.
+        likes.insertIfAbsent(review.getId(), me);
         return new LikeResponse(likes.countByIdReviewId(id), true);
     }
 

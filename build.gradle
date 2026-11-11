@@ -52,13 +52,14 @@ tasks.withType(Test).configureEach {
 
 tasks.register('postgresqlTest', Test) {
     group = 'verification'
-    description = 'Runs Flyway, feed search, and concurrent record writes against PostgreSQL.'
+    description = 'Runs Flyway, feed search, and concurrent record/like writes against PostgreSQL.'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
 
     filter {
         includeTestsMatching 'FeedApiTest'
         includeTestsMatching 'RecordInsertRaceApiTest'
+        includeTestsMatching 'FeedLikeRaceApiTest'
     }
 
     systemProperty 'dokpamine.test.postgresql.url', providers.environmentVariable('POSTGRES_TEST_URL')
