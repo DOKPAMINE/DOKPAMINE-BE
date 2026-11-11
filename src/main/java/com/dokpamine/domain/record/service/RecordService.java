@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -124,6 +125,11 @@ public class RecordService {
             throw ApiException.badRequest("종료 페이지가 전체 쪽수(" + book.getTotalPages() + ")를 넘어요.");
         }
         if (session == null) {
+            // FR-15: 일시정지는 허용하되 실제 경과 시간보다 긴 TIMER는 랭킹에 넣지 않는다.
+            if (dto.source() == SessionSource.TIMER
+                    && dto.activeSeconds() > Duration.between(dto.startedAt(), dto.endedAt()).getSeconds()) {
+                throw ApiException.badRequest("활성 시간이 시작부터 종료까지의 시간을 초과할 수 없어요.");
+            }
             ReadingSession created =
                     new ReadingSession(
                             dto.id(),
