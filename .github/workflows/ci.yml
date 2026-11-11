@@ -19,6 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     # 테스트가 멈춰도 기본 360분 동안 러너를 붙잡지 않게 한다.
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: dokpamine_test
+          POSTGRES_USER: dokpamine
+          POSTGRES_PASSWORD: dokpamine
+        ports:
+          - '5432:5432'
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U dokpamine -d dokpamine_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -32,12 +46,12 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Run tests
-        run: ./gradlew test --no-daemon
+      - name: Run H2 and PostgreSQL tests
+        run: ./gradlew test postgresqlTest --continue --no-daemon
 
       - name: Upload test report on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: test-report
-          path: build/reports/tests/test
+          path: build/reports/tests/
