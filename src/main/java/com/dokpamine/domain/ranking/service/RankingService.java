@@ -78,12 +78,11 @@ public class RankingService {
     private Map<UUID, WeeklyTotal> weeklySeconds(List<UUID> ids, LocalDate start) {
         if (ids.isEmpty()) return Map.of();
         List<ReadingSession> selected =
-                sessions
-                        .findAllByUserIdInAndSourceAndDeletedFalseAndStartedAtGreaterThanEqualAndStartedAtLessThan(
-                                ids,
-                                SessionSource.TIMER,
-                                start.atStartOfDay(KST).toInstant(),
-                                start.plusWeeks(1).atStartOfDay(KST).toInstant());
+                sessions.findRankingSessions(
+                        ids,
+                        SessionSource.TIMER,
+                        start.atStartOfDay(KST).toInstant(),
+                        start.plusWeeks(1).atStartOfDay(KST).toInstant());
         Map<UUID, List<ReadingSession>> groups =
                 selected.stream().collect(Collectors.groupingBy(ReadingSession::getUserId));
         Map<UUID, WeeklyTotal> totals = new HashMap<>();

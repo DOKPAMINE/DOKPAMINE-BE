@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.dokpamine.domain.feed.entity.*;
 import com.dokpamine.domain.feed.repository.*;
 import com.dokpamine.domain.feed.util.NativePublishedAt;
+import com.dokpamine.domain.record.dto.BookDto;
 import com.dokpamine.domain.record.entity.*;
 import com.dokpamine.domain.user.entity.User;
 import com.dokpamine.support.ApiTestSupport;
@@ -85,6 +86,28 @@ class FeedApiTest extends ApiTestSupport {
                 200);
         request(get("/api/feed/" + review.getId()), b, null, 404);
         request(post("/api/feed/" + review.getId() + "/like"), b, null, 404);
+    }
+
+    @Test
+    @DisplayName("FR-08 FR-09 삭제된 책의 감상 상세와 좋아요 등록·취소는 작성자와 타인 모두에게 404다")
+    void deletedBookBlocksReviewAndLikes() throws Exception {
+        User owner = user(), reader = user();
+        UserBook book = book(owner);
+        Review review = review(owner, book, Visibility.PUBLIC, MONDAY);
+        String detail = "/api/feed/" + review.getId();
+        String like = detail + "/like";
+        request(post(like), reader, null, 200);
+
+        var deletedBook = json.valueToTree(new BookDto(book)).asObject().put("deleted", true);
+        request(put("/api/books/" + book.getId()), owner, deletedBook, 200);
+
+        for (User viewer : List.of(owner, reader)) {
+            request(get(detail), viewer, null, 404);
+            request(post(like), viewer, null, 404);
+            request(delete(like), viewer, null, 404);
+        }
+        assertFalse(likes.existsById(new ReviewLikeId(review.getId(), owner.getId())));
+        assertTrue(likes.existsById(new ReviewLikeId(review.getId(), reader.getId())));
     }
 
     @Test

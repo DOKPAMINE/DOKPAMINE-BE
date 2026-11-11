@@ -46,7 +46,7 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 | PUT | `/api/sessions/{id}` | `SessionDto` |
 | PUT | `/api/reviews/{id}` | `ReviewDto` |
 | PUT | `/api/quotes/{id}` | `QuoteDto` |
-| GET | `/api/sync/snapshot` | `{books, sessions, reviews, quotes}` (삭제 안 된 것만) |
+| GET | `/api/sync/snapshot` | `{books, sessions, reviews, quotes}` (삭제되지 않은 책과 그 책의 삭제되지 않은 기록만) |
 
 **동기화 규칙**
 1. 모든 PUT은 멱등이다. 같은 `id`로 몇 번을 보내도 서버에는 한 건만 남는다.
@@ -57,6 +57,7 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 6. 새 세션은 요청의 `source`로 저장한다. 이미 저장된 세션은 저장된 값이 MANUAL이거나, 요청이 MANUAL이거나, 시간(`startedAt`, `endedAt`, `activeSeconds`)이 바뀌면 MANUAL로 저장하고, 그 밖에는 TIMER로 저장한다. 즉 서버는 TIMER로 올리는 것만 막고 MANUAL로 낮추는 요청은 받아들이며, MANUAL은 TIMER로 되돌릴 수 없다. 페이지(`startPage`, `endPage`), `deleted`, `bookId`만 바뀌는 것은 시간 수정으로 보지 않으므로, 요청이 TIMER면 TIMER를 유지한다. 같은 내용의 재전송도 시간 수정으로 보지 않으며, 시각은 DB와 같은 마이크로초 정밀도로 비교한다. 응답의 `source`는 저장된 값이다.
 
 7. 기존 세션의 삭제(`deleted: true`)와 동일한 삭제 요청의 재전송은 `endPage`가 현재 전체 쪽수를 넘어도 허용한다. 세션과 요청에 포함된 책의 소유권은 확인한다.
+8. 책 삭제가 반영되면 다음 스냅샷부터 해당 책의 세션·감상·문장도 제외된다. 해당 책의 하위 기록 삭제 PUT과 재전송에는 기존 검증 규칙을 적용한다.
 
 ```text
 BookDto    {id, isbn?, title(1~200), author(1~100), publisher?, totalPages(≥1), genre, coverUrl?,
@@ -84,9 +85,11 @@ QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, 
 |---|---|---|
 | GET | `/api/feed` | `FeedItem[]` (공개 감상 최신순 100개) |
 | GET | `/api/feed/books?query=데미안` | `BookReviewGroup[]` (책 이름 검색, 묶음별 공개 감상 최신순) |
-| GET | `/api/feed/{reviewId}` | `FeedItem` · 비공개/삭제/없음은 모두 404 |
+| GET | `/api/feed/{reviewId}` | `FeedItem` |
 | POST | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: true}` (중복 요청해도 1회) |
 | DELETE | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: false}` |
+
+감상 상세·좋아요 등록·취소는 감상이 없거나 삭제됐거나 연결된 책이 삭제됐으면 작성자에게도 404를 반환한다. 다른 사용자의 비공개 감상도 404를 반환한다.
 
 `FeedItem = {id, nickname, bookTitle, bookAuthor, genre, oneLine?, body?, publishedAt?, likeCount, likedByMe, mine}`.
 공개 응답에는 닉네임, 책 제목·저자, 감상만 담는다. 독서 시간, 사진, 보관 위치는 노출하지 않는다.
@@ -123,7 +126,7 @@ BookReviewGroup {bookKey, bookTitle, bookAuthor, isbn?, reviews: FeedItem[]}
 
 집계 기준은 다음과 같다.
 - 기간: KST 월요일 00:00부터 다음 월요일 00:00 미만에 **시작한** 세션이다. `weekStart` 생략 시 이번 주, 지정 시 해당 날짜가 속한 주 월요일로 정규화한다.
-- 대상: 현재 `rankingOptIn=true`인 사용자의 삭제되지 않은 TIMER 세션만 집계한다. MANUAL·삭제 세션·비참여자는 제외하고 참여 중단은 다음 조회부터 즉시 반영한다. 주간 인정 시간이 0초이면 순위에서 제외한다.
+- 대상: 현재 `rankingOptIn=true`인 사용자가 삭제되지 않은 책에 저장한 삭제되지 않은 TIMER 세션만 집계한다. 참여 중단과 책 삭제는 다음 조회부터 반영한다. 주간 인정 시간이 0초이면 순위에서 제외한다.
 - 상한: 세션 시작일(KST)별 하루 180분(10,800초)이다. 세션을 종료 시각 오름차순으로 더하며 일별 상한을 넘는 시간은 버린다.
 - **도달 시각**: 상한 적용 후 주간 누적 시간을 마지막으로 늘린 세션의 `endedAt`이다. 일시정지 구간 정보가 없으므로 세션 중간 시각은 추정하지 않는다. 상한 이후 세션·0초 세션은 시각을 늦추지 않으며 서버 수신·생성 시각은 사용하지 않는다.
 - 동점: 주간 초 내림차순 → 도달 시각 오름차순 → 사용자 UUID 문자열 오름차순이다. 공동 순위 없이 1, 2, 3, …으로 매긴다. A 300분, B 200분, C 200분이고 B가 먼저 도달했으면 A 1위, B 2위, C 3위다.

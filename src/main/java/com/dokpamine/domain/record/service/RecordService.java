@@ -27,8 +27,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -241,15 +244,24 @@ public class RecordService {
 
     @Transactional(readOnly = true)
     public SnapshotResponse snapshot(UUID userId) {
+        List<BookDto> activeBooks =
+                books.findAllByUserIdAndDeletedFalse(userId).stream().map(BookDto::new).toList();
+        // 별도 조회 중 책 상태가 바뀌어도 응답에 포함된 책의 기록만 내려준다.
+        Set<UUID> bookIds = activeBooks.stream().map(BookDto::id).collect(Collectors.toSet());
         return new SnapshotResponse(
-                books.findAllByUserIdAndDeletedFalse(userId).stream().map(BookDto::new).toList(),
+                activeBooks,
                 sessions.findAllByUserIdAndDeletedFalse(userId).stream()
+                        .filter(session -> bookIds.contains(session.getBookId()))
                         .map(SessionDto::new)
                         .toList(),
                 reviews.findAllByUserIdAndDeletedFalse(userId).stream()
+                        .filter(review -> bookIds.contains(review.getBookId()))
                         .map(ReviewDto::new)
                         .toList(),
-                quotes.findAllByUserIdAndDeletedFalse(userId).stream().map(QuoteDto::new).toList());
+                quotes.findAllByUserIdAndDeletedFalse(userId).stream()
+                        .filter(quote -> bookIds.contains(quote.getBookId()))
+                        .map(QuoteDto::new)
+                        .toList());
     }
 
     private UserBook ownedBook(UUID userId, UUID bookId) {

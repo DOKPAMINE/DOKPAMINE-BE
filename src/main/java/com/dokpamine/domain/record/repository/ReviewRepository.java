@@ -15,6 +15,13 @@ public interface ReviewRepository extends JpaRepository<Review, UUID> {
     @Query(
             """
                 select r from Review r join UserBook b on b.id = r.bookId
+                where r.id = :id and r.deleted = false and b.deleted = false
+            """)
+    Optional<Review> findActiveReview(UUID id);
+
+    @Query(
+            """
+                select r from Review r join UserBook b on b.id = r.bookId
                 where r.visibility = :visibility and r.deleted = false and b.deleted = false
                 order by r.publishedAt desc
             """)
