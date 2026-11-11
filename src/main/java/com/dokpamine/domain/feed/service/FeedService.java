@@ -57,9 +57,8 @@ public class FeedService {
     }
 
     private Review visibleReview(UUID id, UUID me) {
-        Review review = reviews.findById(id).orElseThrow(() -> ApiException.notFound("감상"));
-        if (review.getDeleted()
-                || review.getVisibility() != Visibility.PUBLIC && !review.getUserId().equals(me))
+        Review review = reviews.findActiveReview(id).orElseThrow(() -> ApiException.notFound("감상"));
+        if (review.getVisibility() != Visibility.PUBLIC && !review.getUserId().equals(me))
             throw ApiException.notFound("감상");
         return review;
     }

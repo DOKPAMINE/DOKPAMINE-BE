@@ -56,6 +56,50 @@ class RecordApiTest extends ApiTestSupport {
         return request(get("/api/sync/snapshot"), user, null, 200);
     }
 
+    @Test
+    @DisplayName("NFR-04 NFR-05 FR-15 책만 먼저 삭제해도 하위 기록은 스냅샷과 랭킹에서 빠진다")
+    void bookDeletionHidesChildRecords() throws Exception {
+        User owner = user("참여", true);
+        UserBook removed = book(owner);
+        UserBook kept = book(owner);
+        var removedSession = dto(removed.getId(), MONDAY);
+        var keptSession = dto(kept.getId(), MONDAY.plusSeconds(600));
+        save(owner, removedSession);
+        save(owner, keptSession);
+        var removedReview = review(owner, removed, Visibility.PUBLIC, MONDAY);
+        var keptReview = review(owner, kept, Visibility.PRIVATE, null);
+        var removedQuote = new QuoteDto(UUID.randomUUID(), removed.getId(), "문장", 12, null, false, MONDAY, MONDAY);
+        var keptQuote = new QuoteDto(UUID.randomUUID(), kept.getId(), "문장", 12, null, false, MONDAY, MONDAY);
+        request(put("/api/quotes/" + removedQuote.id()), owner, removedQuote, 200);
+        request(put("/api/quotes/" + keptQuote.id()), owner, keptQuote, 200);
+
+        String ranking = "/api/ranking/weekly?weekStart=2026-10-26";
+        assertEquals(1200, request(get(ranking), owner, null, 200).path("top").path(0).path("seconds").asInt());
+        var deletedBook = json.valueToTree(new BookDto(removed)).asObject().put("deleted", true);
+        request(put("/api/books/" + removed.getId()), owner, deletedBook, 200);
+
+        JsonNode snapshot = snapshot(owner);
+        Map<String, UUID> keptIds = Map.of(
+                "books", kept.getId(),
+                "sessions", keptSession.id(),
+                "reviews", keptReview.getId(),
+                "quotes", keptQuote.id());
+        keptIds.forEach((key, id) -> assertEquals(
+                List.of(id.toString()),
+                list(snapshot.path(key)).stream().map(node -> node.path("id").asString()).toList(),
+                key));
+        assertEquals(600, request(get(ranking), owner, null, 200).path("top").path(0).path("seconds").asInt());
+
+        var sessionDeletion = changed(removedSession, "deleted", true);
+        var reviewDeletion = json.valueToTree(new ReviewDto(removedReview)).asObject().put("deleted", true);
+        var quoteDeletion = json.valueToTree(removedQuote).asObject().put("deleted", true);
+        for (int i = 0; i < 2; i++) {
+            request(put("/api/sessions/" + removedSession.id()), owner, sessionDeletion, 200);
+            request(put("/api/reviews/" + removedReview.getId()), owner, reviewDeletion, 200);
+            request(put("/api/quotes/" + removedQuote.id()), owner, quoteDeletion, 200);
+        }
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"123456123", "123456789", "999999999"})
     @DisplayName("NFR-05 같은 세션 재전송은 DB 마이크로초 반올림 이후에도 TIMER 한 건이다")
