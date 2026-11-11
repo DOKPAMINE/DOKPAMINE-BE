@@ -56,7 +56,7 @@ public class RecordService {
     }
 
     public BookDto upsertBook(UUID userId, BookDto dto) {
-        UserBook book = books.findById(dto.id()).orElse(null);
+        UserBook book = books.findByIdForUpdate(dto.id()).orElse(null);
         if (book != null) requireOwner(book.getUserId(), userId);
         if (dto.currentPage() > dto.totalPages())
             throw ApiException.badRequest("현재 페이지가 전체 쪽수보다 클 수 없어요.");
@@ -82,9 +82,11 @@ public class RecordService {
             if (inserts.insert(created)) return new BookDto(created);
 
             // 먼저 커밋된 행은 소유권을 다시 확인한 뒤에만 수정한다(NFR-05).
-            book = books.findById(dto.id()).orElseThrow();
+            book = books.findByIdForUpdate(dto.id()).orElseThrow();
             requireOwner(book.getUserId(), userId);
         }
+        // NFR-05, NFR-09: 기기 시각으로 요청 순서를 보장할 수 없어 삭제된 책은 복원하지 않는다.
+        if (book.getDeleted()) return new BookDto(book);
         book.setIsbn(dto.isbn());
         book.setTitle(TextValues.trim(dto.title()));
         book.setAuthor(TextValues.trim(dto.author()));
