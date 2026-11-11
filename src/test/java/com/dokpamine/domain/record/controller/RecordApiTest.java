@@ -11,6 +11,7 @@ import com.dokpamine.support.ApiTestSupport;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import tools.jackson.databind.JsonNode;
 
@@ -54,6 +55,60 @@ class RecordApiTest extends ApiTestSupport {
 
     private JsonNode snapshot(User user) throws Exception {
         return request(get("/api/sync/snapshot"), user, null, 200);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"1000000000,10800", "0,1", "999999999,1", "1000000000,2"})
+    @DisplayName("FR-15 경과 시간을 초과하는 신규 TIMER는 저장과 랭킹에서 제외한다")
+    void rejectExcessiveTimerActiveSeconds(long elapsedNanos, int activeSeconds) throws Exception {
+        User owner = user("참여", true);
+        var session = new SessionDto(
+                UUID.randomUUID(), book(owner).getId(), MONDAY, MONDAY.plusNanos(elapsedNanos),
+                activeSeconds, 0, null, SessionSource.TIMER, false, MONDAY);
+        JsonNode error = request(put("/api/sessions/" + session.id()), owner, session, 400);
+        assertEquals("BAD_REQUEST", error.path("code").asString());
+        assertEquals("활성 시간이 시작부터 종료까지의 시간을 초과할 수 없어요.", error.path("message").asString());
+        assertFalse(sessions.existsById(session.id()));
+        assertEquals(0, snapshot(owner).path("sessions").size());
+        assertEquals(0, request(get("/api/ranking/weekly?weekStart=2026-10-26"), owner, null, 200)
+                .path("top").size());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"600000000000,600", "600000000000,300", "0,0", "999999999,0",
+            "1000000000,1", "1000000001,1"})
+    @DisplayName("FR-15 NFR-05 정상 TIMER 경계값과 일시정지 및 0초 세션은 멱등으로 보존한다")
+    void validTimerActiveSeconds(long elapsedNanos, int activeSeconds) throws Exception {
+        User owner = user("참여", true);
+        var session = new SessionDto(
+                UUID.randomUUID(), book(owner).getId(), MONDAY, MONDAY.plusNanos(elapsedNanos),
+                activeSeconds, 0, null, SessionSource.TIMER, false, MONDAY);
+        for (int i = 0; i < 2; i++) {
+            JsonNode saved = save(owner, session);
+            assertEquals("TIMER", saved.path("source").asString());
+            assertEquals(activeSeconds, saved.path("activeSeconds").asInt());
+        }
+        JsonNode saved = snapshot(owner).path("sessions");
+        assertEquals(1, saved.size());
+        assertEquals("TIMER", request(put("/api/sessions/" + session.id()), owner, saved.path(0), 200)
+                .path("source").asString());
+        JsonNode top = request(get("/api/ranking/weekly?weekStart=2026-10-26"), owner, null, 200).path("top");
+        assertEquals(activeSeconds == 0 ? 0 : 1, top.size());
+        if (activeSeconds > 0) assertEquals(activeSeconds, top.path(0).path("seconds").asInt());
+    }
+
+    @Test
+    @DisplayName("FR-15 신규 MANUAL은 활성 시간 상한을 적용하지 않고 TIMER로 복귀하지 않는다")
+    void manualSessionKeepsExistingTimeRules() throws Exception {
+        User owner = user("참여", true);
+        var session = new SessionDto(
+                UUID.randomUUID(), book(owner).getId(), MONDAY, MONDAY.plusSeconds(1),
+                10800, 0, null, SessionSource.MANUAL, false, MONDAY);
+        assertEquals("MANUAL", save(owner, session).path("source").asString());
+        assertEquals("MANUAL", request(put("/api/sessions/" + session.id()), owner,
+                changed(session, "source", "TIMER"), 200).path("source").asString());
+        assertEquals(0, request(get("/api/ranking/weekly?weekStart=2026-10-26"), owner, null, 200)
+                .path("top").size());
     }
 
     @Test
