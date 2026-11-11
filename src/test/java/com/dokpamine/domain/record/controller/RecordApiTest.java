@@ -101,6 +101,44 @@ class RecordApiTest extends ApiTestSupport {
     }
 
     @ParameterizedTest
+    @ValueSource(longs = {-60, 0, 60})
+    @DisplayName("NFR-05 NFR-09 삭제된 책은 요청 시각과 무관하게 복원되지 않고 공개 감상도 숨긴다")
+    void staleBookCannotUndoDeletion(long offsetSeconds) throws Exception {
+        User owner = user(), reader = user();
+        UUID id = UUID.randomUUID();
+        String path = "/api/books/" + id;
+        var original = new BookDto(id, null, "책", "저자", null, 100, "소설", null,
+                BookStatus.READING, 10, 0, null, false, MONDAY, MONDAY);
+        request(put(path), owner, original, 200);
+        var review = review(owner, books.findById(id).orElseThrow(), Visibility.PUBLIC, MONDAY);
+        request(get("/api/feed/" + review.getId()), reader, null, 200);
+
+        Instant deletedAt = MONDAY.plusSeconds(120);
+        var deletion = json.valueToTree(original).asObject()
+                .put("deleted", true).put("updatedAt", deletedAt.toString());
+        JsonNode deleted = request(put(path), owner, deletion, 200);
+        request(get("/api/feed/" + review.getId()), reader, null, 404);
+        var stale = json.valueToTree(original).asObject()
+                .put("title", "오래된 기기의 수정").put("updatedAt", deletedAt.plusSeconds(offsetSeconds).toString());
+        request(put(path), reader, stale, 403);
+        for (int i = 0; i < 2; i++) {
+            assertEquals(deleted, request(put(path), owner, stale, 200));
+            assertEquals(deleted, request(put(path), owner, deletion, 200));
+            JsonNode snapshot = snapshot(owner);
+            assertEquals(0, snapshot.path("books").size());
+            assertEquals(0, snapshot.path("reviews").size());
+            assertEquals(0, request(get("/api/feed"), reader, null, 200).size());
+            request(get("/api/feed/" + review.getId()), reader, null, 404);
+        }
+        assertEquals(1, books.count());
+        UserBook saved = books.findById(id).orElseThrow();
+        assertTrue(saved.getDeleted());
+        assertEquals(deletedAt, saved.getUpdatedAt());
+        assertEquals("책", saved.getTitle());
+        assertFalse(reviews.findById(review.getId()).orElseThrow().getDeleted());
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"123456123", "123456789", "999999999"})
     @DisplayName("NFR-05 같은 세션 재전송은 DB 마이크로초 반올림 이후에도 TIMER 한 건이다")
     void idempotent(String nanos) throws Exception {
