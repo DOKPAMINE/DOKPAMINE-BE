@@ -13,16 +13,18 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record SessionDto(
-        @NotNull UUID id,
-        @NotNull UUID bookId,
-        @NotNull Instant startedAt,
-        @NotNull Instant endedAt,
-        @JsonProperty(required = true) @Min(0) int activeSeconds,
-        @JsonProperty(required = true) @Min(0) int startPage,
-        @Min(0) Integer endPage,
-        @NotNull SessionSource source,
+        @NotNull(message = "필수 값을 입력해 주세요.") UUID id,
+        @NotNull(message = "필수 값을 입력해 주세요.") UUID bookId,
+        @NotNull(message = "필수 값을 입력해 주세요.") Instant startedAt,
+        @NotNull(message = "필수 값을 입력해 주세요.") Instant endedAt,
+        @JsonProperty(required = true)
+        @Min(value = 0, message = "0 이상의 값을 입력해 주세요.") int activeSeconds,
+        @JsonProperty(required = true)
+        @Min(value = 0, message = "0 이상의 값을 입력해 주세요.") int startPage,
+        @Min(value = 0, message = "0 이상의 값을 입력해 주세요.") Integer endPage,
+        @NotNull(message = "필수 값을 입력해 주세요.") SessionSource source,
         @JsonDeserialize(using = DefaultFalseBooleanDeserializer.class) Boolean deleted,
-        @NotNull Instant createdAt) {
+        @NotNull(message = "필수 값을 입력해 주세요.") Instant createdAt) {
     public SessionDto {
         if (deleted == null) deleted = false;
     }

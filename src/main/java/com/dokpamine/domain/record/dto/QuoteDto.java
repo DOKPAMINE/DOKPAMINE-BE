@@ -11,14 +11,16 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record QuoteDto(
-        @NotNull UUID id,
-        @NotNull UUID bookId,
-        @NotNull @NotBlank @Size(max = 1000) String text,
-        @Min(0) Integer page,
-        @Size(max = 500) String memo,
+        @NotNull(message = "필수 값을 입력해 주세요.") UUID id,
+        @NotNull(message = "필수 값을 입력해 주세요.") UUID bookId,
+        @NotNull(message = "필수 값을 입력해 주세요.")
+        @NotBlank(message = "공백이 아닌 값을 입력해 주세요.")
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 1000) String text,
+        @Min(value = 0, message = "0 이상의 값을 입력해 주세요.") Integer page,
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 500) String memo,
         @JsonDeserialize(using = DefaultFalseBooleanDeserializer.class) Boolean deleted,
-        @NotNull Instant createdAt,
-        @NotNull Instant updatedAt) {
+        @NotNull(message = "필수 값을 입력해 주세요.") Instant createdAt,
+        @NotNull(message = "필수 값을 입력해 주세요.") Instant updatedAt) {
     public QuoteDto {
         if (deleted == null) deleted = false;
     }

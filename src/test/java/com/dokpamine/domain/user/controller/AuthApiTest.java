@@ -69,7 +69,7 @@ class AuthApiTest extends ApiTestSupport {
                         400);
         assertEquals("VALIDATION_FAILED", error.path("code").asString());
         assertEquals(
-                "password: 비밀번호를 UTF-8 기준 72바이트 이하로 입력해 주세요.",
+                "비밀번호를 UTF-8 기준 72바이트 이하로 입력해 주세요.",
                 error.path("message").asString());
 
         request(
