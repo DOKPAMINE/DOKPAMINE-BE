@@ -13,22 +13,31 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record BookDto(
-        @NotNull UUID id,
+        @NotNull(message = "필수 값을 입력해 주세요.") UUID id,
         @Pattern(regexp = "^(\\d{10}|\\d{13})$", message = "ISBN 은 10자리 또는 13자리 숫자여야 해요.")
                 String isbn,
-        @NotNull @NotBlank @Size(max = 200) String title,
-        @NotNull @NotBlank @Size(max = 100) String author,
-        @Size(max = 100) String publisher,
-        @JsonProperty(required = true) @Min(1) int totalPages,
-        @NotNull @NotBlank @Size(max = 30) String genre,
-        @Size(max = 500) String coverUrl,
-        @NotNull BookStatus status,
-        @JsonProperty(required = true) @Min(0) int currentPage,
-        @JsonProperty(required = true) @Min(0) int completedCount,
+        @NotNull(message = "필수 값을 입력해 주세요.")
+        @NotBlank(message = "공백이 아닌 값을 입력해 주세요.")
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 200) String title,
+        @NotNull(message = "필수 값을 입력해 주세요.")
+        @NotBlank(message = "공백이 아닌 값을 입력해 주세요.")
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 100) String author,
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 100) String publisher,
+        @JsonProperty(required = true)
+        @Min(value = 1, message = "1 이상의 값을 입력해 주세요.") int totalPages,
+        @NotNull(message = "필수 값을 입력해 주세요.")
+        @NotBlank(message = "공백이 아닌 값을 입력해 주세요.")
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 30) String genre,
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 500) String coverUrl,
+        @NotNull(message = "필수 값을 입력해 주세요.") BookStatus status,
+        @JsonProperty(required = true)
+        @Min(value = 0, message = "0 이상의 값을 입력해 주세요.") int currentPage,
+        @JsonProperty(required = true)
+        @Min(value = 0, message = "0 이상의 값을 입력해 주세요.") int completedCount,
         Instant completedAt,
         @JsonDeserialize(using = DefaultFalseBooleanDeserializer.class) Boolean deleted,
-        @NotNull Instant createdAt,
-        @NotNull Instant updatedAt) {
+        @NotNull(message = "필수 값을 입력해 주세요.") Instant createdAt,
+        @NotNull(message = "필수 값을 입력해 주세요.") Instant updatedAt) {
     public BookDto {
         // NFR-05: 클라이언트가 삭제 필드를 생략하면 기존 동기화 계약의 false를 적용한다.
         if (deleted == null) deleted = false;
