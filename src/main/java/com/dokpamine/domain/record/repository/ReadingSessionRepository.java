@@ -3,13 +3,21 @@ package com.dokpamine.domain.record.repository;
 import com.dokpamine.domain.record.entity.ReadingSession;
 import com.dokpamine.domain.record.entity.SessionSource;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
 import java.util.*;
 
 public interface ReadingSessionRepository extends JpaRepository<ReadingSession, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select session from ReadingSession session where session.id = :id")
+    Optional<ReadingSession> findByIdForUpdate(@Param("id") UUID id);
+
     List<ReadingSession> findAllByUserIdAndDeletedFalse(UUID userId);
 
     @Query("select count(s) > 0 from ReadingSession s where s.bookId = :bookId"

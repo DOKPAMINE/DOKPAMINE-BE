@@ -109,7 +109,9 @@ public class RecordService {
     }
 
     public SessionDto upsertSession(UUID userId, SessionDto dto) {
-        ReadingSession session = sessions.findById(dto.id()).orElse(null);
+        ReadingSession session = 112
+        // FR-15: 책이 바뀌는 요청도 같은 세션 잠금으로 직렬화해 MANUAL 전환을 보존한다.
+        dto.id()).orElse(null);
         if (session != null) requireOwner(session.getUserId(), userId);
         // 책 쪽수 수정과 세션 저장을 직렬화해 검증 직후 범위가 바뀌지 않게 한다(NFR-04).
         UserBook book = books.findByIdForUpdate(dto.bookId())
@@ -145,7 +147,7 @@ public class RecordService {
                             dto.createdAt());
             if (inserts.insert(created)) return new SessionDto(created);
 
-            session = sessions.findById(dto.id()).orElseThrow();
+            session = sessions.findByIdForUpdate(dto.id()).orElseThrow();
             requireOwner(session.getUserId(), userId);
         }
         SessionSource source = dto.source();

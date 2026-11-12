@@ -3,6 +3,7 @@ package com.dokpamine.domain.record.controller;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mockingDetails;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -17,6 +18,7 @@ import com.dokpamine.domain.record.entity.ReadingSession;
 import com.dokpamine.domain.record.entity.SessionSource;
 import com.dokpamine.domain.record.entity.UserBook;
 import com.dokpamine.domain.record.repository.RecordInsertRepository;
+import com.dokpamine.domain.record.repository.ReadingSessionRepository;
 import com.dokpamine.domain.record.service.RecordService;
 import com.dokpamine.domain.user.entity.User;
 import com.dokpamine.support.ApiTestSupport;
@@ -36,6 +38,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import tools.jackson.databind.JsonNode;
 
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -48,7 +51,73 @@ import java.util.concurrent.atomic.AtomicBoolean;
 class RecordInsertRaceApiTest extends ApiTestSupport {
     @MockitoSpyBean private RecordInsertRepository inserts;
     @MockitoSpyBean private RecordService recordService;
+    @MockitoSpyBean private ReadingSessionRepository sessionRepository;
     @Autowired private PlatformTransactionManager transactionManager;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    @DisplayName("FR-15 시간 수정과 페이지 수정이 경합해도 책 변경과 무관하게 MANUAL과 랭킹 제외를 유지한다")
+    void preservesManualDuringConcurrentUpdates(boolean moveBook) throws Exception {
+        User owner = user("독자", true);
+        ReadingSession original = session(owner, 600, MONDAY, SessionSource.TIMER, false);
+        UUID targetBook = moveBook ? book(owner).getId() : original.getBookId();
+        String path = "/api/sessions/" + original.getId();
+        var timeEdit = new SessionDto(original.getId(), original.getBookId(), MONDAY,
+                MONDAY.plusSeconds(600), 300, 0, 10, SessionSource.TIMER, false, MONDAY);
+        var pageEdit = new SessionDto(original.getId(), targetBook, MONDAY,
+                MONDAY.plusSeconds(600), 600, 0, 50, SessionSource.TIMER, false, MONDAY);
+        CountDownLatch firstLocked = new CountDownLatch(1);
+        CountDownLatch secondReading = new CountDownLatch(1);
+        CountDownLatch firstCommitted = new CountDownLatch(1);
+        Answer<?> repositoryQuery = mockingDetails(sessionRepository).getMockCreationSettings().getDefaultAnswer();
+        // 잠금 조회는 실행 전에, 이전 일반 조회는 읽은 뒤에 멈춰 같은 경쟁 조건을 재현한다.
+        doAnswer(invocation -> {
+            if (Thread.currentThread().getName().equals("session-page-update")) secondReading.countDown();
+            return repositoryQuery.answer(invocation);
+        }).when(sessionRepository).findByIdForUpdate(original.getId());
+        doAnswer(invocation -> {
+            Object result = repositoryQuery.answer(invocation);
+            if (Thread.currentThread().getName().equals("session-page-update")) {
+                secondReading.countDown();
+                assertTrue(firstCommitted.await(10, TimeUnit.SECONDS));
+            }
+            return result;
+        }).when(sessionRepository).findById(original.getId());
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> new TransactionTemplate(transactionManager).execute(tx -> {
+                sessionRepository.findByIdForUpdate(original.getId()).orElseThrow();
+                books.findByIdForUpdate(original.getBookId()).orElseThrow();
+                firstLocked.countDown();
+                try {
+                    assertTrue(secondReading.await(10, TimeUnit.SECONDS));
+                    return putRecord(path, owner, timeEdit, 200);
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+            }));
+            try {
+                if (!firstLocked.await(10, TimeUnit.SECONDS)) first.get(1, TimeUnit.SECONDS);
+                var second = executor.submit(() -> {
+                    Thread.currentThread().setName("session-page-update");
+                    return putRecord(path, owner, pageEdit, 200);
+                });
+                assertEquals("MANUAL", first.get(10, TimeUnit.SECONDS).path("source").asString());
+                firstCommitted.countDown();
+                assertEquals("MANUAL", second.get(10, TimeUnit.SECONDS).path("source").asString());
+            } finally {
+                secondReading.countDown();
+                firstCommitted.countDown();
+            }
+        }
+        ReadingSession saved = sessions.findById(original.getId()).orElseThrow();
+        assertEquals(SessionSource.MANUAL, saved.getSource());
+        assertEquals(50, saved.getEndPage());
+        assertEquals(targetBook, saved.getBookId());
+        assertEquals(1, sessions.findAllByUserIdAndDeletedFalse(owner.getId()).size());
+        assertTrue(sessions.findRankingSessions(List.of(owner.getId()), SessionSource.TIMER,
+                MONDAY, MONDAY.plusSeconds(604800)).isEmpty());
+    }
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
