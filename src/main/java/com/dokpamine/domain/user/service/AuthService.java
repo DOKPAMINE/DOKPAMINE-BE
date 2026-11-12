@@ -11,6 +11,7 @@ import com.dokpamine.global.apiPayload.exception.ApiException;
 import com.dokpamine.global.config.JwtProperties;
 import com.dokpamine.global.util.TextValues;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -18,6 +19,7 @@ import org.springframework.security.oauth2.jwt.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.*;
 
@@ -45,13 +47,23 @@ public class AuthService {
         String email = TextValues.trim(request.email()).toLowerCase(Locale.ROOT);
         if (users.existsByEmail(email))
             throw ApiException.conflict("EMAIL_TAKEN", "이미 가입된 이메일이에요.");
-        User user =
-                users.save(
-                        new User(
-                                UUID.randomUUID(),
-                                email,
-                                passwords.encode(request.password()),
-                                TextValues.trim(request.nickname())));
+        User user;
+        try {
+            // FR-10: 사전 조회를 함께 통과한 가입도 토큰 발급 전에 UNIQUE 충돌을 확인한다.
+            user =
+                    users.saveAndFlush(
+                            new User(
+                                    UUID.randomUUID(),
+                                    email,
+                                    passwords.encode(request.password()),
+                                    TextValues.trim(request.nickname())));
+        } catch (DataIntegrityViolationException e) {
+            if (e.getMostSpecificCause() instanceof SQLException sql
+                    && "23505".equals(sql.getSQLState())) {
+                throw ApiException.conflict("EMAIL_TAKEN", "이미 가입된 이메일이에요.");
+            }
+            throw e;
+        }
         return issueToken(user);
     }
 
