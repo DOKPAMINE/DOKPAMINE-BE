@@ -22,7 +22,9 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 | POST | `/api/auth/signup` | `{email, password(8~64자, UTF-8 최대 72바이트), nickname(1~30)}` | 201 `TokenResponse` · 400 `VALIDATION_FAILED` · 409 `EMAIL_TAKEN` |
 | POST | `/api/auth/login` | `{email, password}` | 200 `TokenResponse` · 401 `INVALID_CREDENTIALS` |
 | GET | `/api/me` | - | `MeResponse` |
-| PATCH | `/api/me` | `{nickname?, rankingOptIn?}` | `MeResponse` |
+| PATCH | `/api/me` | `{nickname?, 가입 이메일과 가입·프로필 수정 닉네임은 Unicode 공백을 포함한 앞뒤 공백을 제거한 뒤 검증한다. 이메일은 필수이며 빈 값은 허용하지 않고 소문자로 저장한다. 닉네임은 정규화 후 1~30자여야 하며 빈 값은 400 `VALIDATION_FAILED`로 거부한다. 프로필 수정에서 닉네임 생략 또는 `null`은 기존 값을 유지한다.
+
+rankingOptIn?}` | `MeResponse` |
 
 `TokenResponse = {accessToken, expiresAt, user: MeResponse}`, `MeResponse = {id, email, nickname, rankingOptIn}`. 토큰 유효기간은 14일이고 리프레시 토큰은 없다(만료되면 재로그인).
 
