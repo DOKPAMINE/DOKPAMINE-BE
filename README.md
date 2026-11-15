@@ -65,9 +65,10 @@ set +a
 ./gradlew bootRun
 ```
 
-IntelliJ에서 `main()`을 직접 실행하거나 Windows에서 실행할 때는 실행 환경의 환경 변수에
-동일한 값을 설정하세요. 파일에 적힌 값은 애플리케이션에 환경 변수로 전달하며,
-Java 코드나 `application.yml`에 실제 키를 입력하지 않습니다.
+IntelliJ에서는 실행 설정(Edit Configurations)의 Environment variables 칸 오른쪽 폴더 아이콘으로
+`.env`를 지정하세요. IntelliJ는 등호가 있는 `#` 줄도 변수로 읽으므로, `.env`의 주석에는 등호를 쓰지 않습니다.
+Windows에서 실행할 때는 실행 환경의 환경 변수에 동일한 값을 설정하세요.
+파일에 적힌 값은 애플리케이션에 환경 변수로 전달하며, Java 코드나 `application.yml`에 실제 키를 입력하지 않습니다.
 
 | 이름 | 용도 | 기본값 |
 |---|---|---|
