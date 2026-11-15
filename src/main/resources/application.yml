@@ -25,6 +25,8 @@ dokpamine:
     nlk-cert-key: ${NLK_CERT_KEY:}
     kakao-rest-api-key: ${KAKAO_REST_API_KEY:}
     google-books-key: ${GOOGLE_BOOKS_KEY:}
+    # YES24는 조회 연동 전이라 CatalogProperties가 아직 읽지 않는다.
+    yes24-api-key: ${YES24_API_KEY:}
     timeout: 4s
 
 management:
