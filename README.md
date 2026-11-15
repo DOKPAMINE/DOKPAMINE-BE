@@ -50,12 +50,32 @@ java -jar build/libs/dokpamine-be-0.0.1-SNAPSHOT.jar
 인터넷 연결은 최초 Gradle 및 의존성 다운로드 시 필요합니다.
 
 ### 환경 변수
+
+API 키, JWT 서명 키, DB 비밀번호는 프로젝트 루트의 `.env`에서 관리합니다.
+처음 설정하는 환경에서는 `.env.example`을 `.env`로 복사하고 필요한 값을 입력하세요.
+`.env`와 `.env.*`는 Git에서 제외되며, 실제 값이 없는 `.env.example`만 공유합니다.
+
+`.env`는 자동으로 로딩되지 않습니다. macOS / Linux에서는 프로젝트 루트에서
+다음 명령으로 환경 변수에 반영한 뒤 서버를 실행하세요. 값을 바꾸면 서버를 중지하고 다시 실행합니다.
+
+```bash
+set -a
+source .env
+set +a
+./gradlew bootRun
+```
+
+IntelliJ에서 `main()`을 직접 실행하거나 Windows에서 실행할 때는 실행 환경의 환경 변수에
+동일한 값을 설정하세요. 파일에 적힌 값은 애플리케이션에 환경 변수로 전달하며,
+Java 코드나 `application.yml`에 실제 키를 입력하지 않습니다.
+
 | 이름 | 용도 | 기본값 |
 |---|---|---|
 | `DOKPAMINE_JWT_SECRET` | JWT 서명 키(UTF-8 기준 32바이트 이상, `prod` 필수) | `local`에서만 개발용 기본값 사용 |
 | `NLK_CERT_KEY` | 국립중앙도서관 ISBN 서지정보(쪽수·KDC 우선). [인증키 신청 안내](https://www.nl.go.kr/NL/contents/N31101010000.do) | 없음 |
 | `KAKAO_REST_API_KEY` | 카카오 ISBN 책 검색(제목·저자·출판사·표지 보완). [REST API 키 발급 안내](https://developers.kakao.com/docs/ko/app-setting/app#key) | 없음 |
 | `GOOGLE_BOOKS_KEY` | Google Books 조회. [API 키 발급 안내](https://developers.google.com/books/docs/v1/using#APIKey) | 없음 |
+| `YES24_API_KEY` | YES24 도서 API. 조회 연동 전이라 아직 사용하지 않습니다 | 없음 |
 | `SPRING_PROFILES_ACTIVE=prod` + `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL 운영 설정 | - |
 
 조회 순서는 국립중앙도서관 → 카카오 → Google Books → Open Library이며, 앞 결과의 빈 칸만 뒤 결과로 채웁니다.

@@ -41,4 +41,9 @@ out/
 
 ### Local data ###
 data/
+
+### Secrets ###
 *.env
+.env
+.env.*
+!.env.example
