@@ -52,7 +52,7 @@ public class HttpCatalogFetcher implements CatalogFetcher {
                     case "yes24" ->
                             http.get()
                                     .uri(
-                                            "https://apis.yes24.com/v1/goods/itemDetail?searchType=ISBN13&query={isbn}",
+                                            "https://apis.yes24.com/v1/goods/itemDetail?searchType=ISBN13&query={isbn}&detail=Y",
                                             isbn)
                                     .header("X-Api-Key", properties.yes24ApiKey());
                     case "openlibrary" ->
