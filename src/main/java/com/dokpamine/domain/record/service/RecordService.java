@@ -128,9 +128,7 @@ public class RecordService {
         ReadingSession session = sessions.findByIdForUpdate(dto.id()).orElse(null);
         if (session != null) requireOwner(session.getUserId(), userId);
         // 책 쪽수 수정과 세션 저장을 직렬화해 검증 직후 범위가 바뀌지 않게 한다(NFR-04).
-        UserBook book = books.findByIdForUpdate(dto.bookId())
-                .orElseThrow(() -> ApiException.conflict("BOOK_NOT_SYNCED", "책 정보가 아직 서버에 없어요."));
-        requireOwner(book.getUserId(), userId);
+        UserBook book = ownedBook(userId, dto.bookId(), dto.deleted());
         if (dto.endedAt().isBefore(dto.startedAt()))
             throw ApiException.badRequest("종료 시각이 시작 시각보다 빨라요.");
         boolean deletingExistingSession = session != null && dto.deleted();
@@ -187,7 +185,7 @@ public class RecordService {
     public ReviewDto upsertReview(UUID userId, ReviewDto dto) {
         Review review = reviews.findById(dto.id()).orElse(null);
         if (review != null) requireOwner(review.getUserId(), userId);
-        ownedBook(userId, dto.bookId());
+        ownedBook(userId, dto.bookId(), dto.deleted());
         if (!dto.deleted() && TextValues.isBlank(dto.oneLine()) && TextValues.isBlank(dto.body()))
             throw ApiException.badRequest("한줄평이나 독후감 중 하나는 입력해야 해요.");
         String oneLine = TextValues.trimToNull(dto.oneLine());
@@ -249,7 +247,7 @@ public class RecordService {
     public QuoteDto upsertQuote(UUID userId, QuoteDto dto) {
         Quote quote = quotes.findById(dto.id()).orElse(null);
         if (quote != null) requireOwner(quote.getUserId(), userId);
-        ownedBook(userId, dto.bookId());
+        ownedBook(userId, dto.bookId(), dto.deleted());
         if (quote == null) {
             Quote created =
                     new Quote(
@@ -298,12 +296,15 @@ public class RecordService {
                         .toList());
     }
 
-    private UserBook ownedBook(UUID userId, UUID bookId) {
+    private UserBook ownedBook(UUID userId, UUID bookId, boolean deleting) {
         UserBook book =
-                books.findById(bookId)
+                books.findByIdForUpdate(bookId)
                         .orElseThrow(() ->
                                 ApiException.conflict("BOOK_NOT_SYNCED", "책 정보가 아직 서버에 없어요."));
         requireOwner(book.getUserId(), userId);
+        if (book.getDeleted() && !deleting) {
+            throw ApiException.conflict("BOOK_DELETED", "삭제된 책에는 기록을 저장할 수 없어요.");
+        }
         return book;
     }
 
