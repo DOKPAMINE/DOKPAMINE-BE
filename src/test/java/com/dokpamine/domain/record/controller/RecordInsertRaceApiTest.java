@@ -207,7 +207,13 @@ class RecordInsertRaceApiTest extends ApiTestSupport {
             case BOOK -> doAnswer(pauseFirstInsert).when(inserts).insert(any(UserBook.class));
             // 같은 책의 저장은 잠금으로 직렬화되므로 서비스 진입 전 재시도를 겹친다.
             case SESSION -> doAnswer(pauseFirstInsert).when(recordService).upsertSession(any(), any());
-            case QUOTE -> doAnswer(pauseFirstInsert).when(inserts).insert(any(Quote.class));
+            case QUOTE -> {
+                if (owner.getId().equals(contender.getId())) {
+                    doAnswer(pauseFirstInsert).when(recordService).upsertQuote(any(), any());
+                } else {
+                    doAnswer(pauseFirstInsert).when(inserts).insert(any(Quote.class));
+                }
+            }
         }
 
         JsonNode first;

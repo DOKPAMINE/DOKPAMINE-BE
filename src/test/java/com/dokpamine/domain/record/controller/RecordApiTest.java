@@ -743,4 +743,22 @@ class RecordApiTest extends ApiTestSupport {
                         .path("text")
                         .asString());
     }
+
+    @Test
+    @DisplayName("NFR-05 삭제된 책에는 활성 세션·문장·감상을 추가할 수 없다")
+    void deletedParentRejectsActiveRecords() throws Exception {
+        User owner = user();
+        UserBook book = book(owner);
+        book.setDeleted(true);
+        em.flush();
+        UUID id = UUID.randomUUID();
+        UUID parent = book.getId();
+        SessionDto session = dto(parent, MONDAY);
+        var review = new ReviewDto(id, parent, "감상", null, Visibility.PUBLIC, false, MONDAY, MONDAY, null);
+        var quote = new QuoteDto(id, parent, "문장", null, null, false, MONDAY, MONDAY);
+        for (var entry : Map.of("/api/reviews/" + id, (Object) review, "/api/quotes/" + id, quote,
+                "/api/sessions/" + session.id(), session).entrySet()) {
+            assertEquals("BOOK_DELETED", request(put(entry.getKey()), owner, entry.getValue(), 409).path("code").asString());
+        }
+    }
 }
