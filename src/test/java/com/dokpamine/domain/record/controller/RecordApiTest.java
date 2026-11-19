@@ -57,6 +57,43 @@ class RecordApiTest extends ApiTestSupport {
         return request(get("/api/sync/snapshot"), user, null, 200);
     }
 
+    @Test
+    @DisplayName("NFR-04·NFR-05 앞표지와 책등을 동기화하고 구버전 PUT에도 같은 ISBN의 링크를 보존한다")
+    void bookCoverSync() throws Exception {
+        User owner = user();
+        UUID id = UUID.randomUUID();
+        String path = "/api/books/" + id;
+        String cover = "https://image.yes24.com/goods/2/L";
+        String side = "https://image.yes24.com/goods/2/SIDE/L";
+        String product = "https://www.yes24.com/product/goods/2";
+        var dto = new BookDto(id, "9788937460449", "책", "저자", null, 100, "소설", cover, side,
+                product, BookStatus.READING, 0, 0, null, false, MONDAY, MONDAY);
+        var saved = request(put(path), owner, dto, 200);
+        assertEquals(cover, saved.path("coverUrl").asString());
+        assertEquals(side, saved.path("sideCoverUrl").asString());
+        assertEquals(product, saved.path("yes24ProductUrl").asString());
+        assertEquals(saved, request(put(path), owner, dto, 200));
+        request(put(path), user(), dto, 403);
+
+        var legacy = json.valueToTree(dto).asObject().put("isbn", "8937460440");
+        legacy.remove("sideCoverUrl");
+        legacy.putNull("yes24ProductUrl");
+        request(put(path), owner, legacy, 200);
+        em.flush();
+        em.clear();
+        var snapshotBooks = snapshot(owner).path("books");
+        assertEquals(1, snapshotBooks.size());
+        var restored = snapshotBooks.path(0);
+        assertEquals(cover, restored.path("coverUrl").asString());
+        assertEquals(side, restored.path("sideCoverUrl").asString());
+        assertEquals(product, restored.path("yes24ProductUrl").asString());
+
+        legacy.put("isbn", "9788996991342").putNull("coverUrl");
+        var changedBook = request(put(path), owner, legacy, 200);
+        assertTrue(changedBook.path("sideCoverUrl").isNull());
+        assertTrue(changedBook.path("yes24ProductUrl").isNull());
+    }
+
     @ParameterizedTest
     @CsvSource({"1000000000,10800", "0,1", "999999999,1", "1000000000,2"})
     @DisplayName("FR-15 경과 시간을 초과하는 신규 TIMER는 저장과 랭킹에서 제외한다")
@@ -162,7 +199,7 @@ class RecordApiTest extends ApiTestSupport {
         User owner = user(), reader = user();
         UUID id = UUID.randomUUID();
         String path = "/api/books/" + id;
-        var original = new BookDto(id, null, "책", "저자", null, 100, "소설", null,
+        var original = new BookDto(id, null, "책", "저자", null, 100, "소설", null, null, null,
                 BookStatus.READING, 10, 0, null, false, MONDAY, MONDAY);
         request(put(path), owner, original, 200);
         var review = review(owner, books.findById(id).orElseThrow(), Visibility.PUBLIC, MONDAY);
@@ -279,7 +316,7 @@ class RecordApiTest extends ApiTestSupport {
         save(owner, session);
 
         var updatedBook = new BookDto(
-                book.getId(), null, "책", "저자", null, 40, "소설", null,
+                book.getId(), null, "책", "저자", null, 40, "소설", null, null, null,
                 BookStatus.READING, 0, 0, null, false, MONDAY, MONDAY);
         // 이전 서버 버전에서 이미 축소된 데이터도 삭제 동기화할 수 있어야 한다.
         UserBook legacy = books.findById(book.getId()).orElseThrow();
@@ -348,6 +385,8 @@ class RecordApiTest extends ApiTestSupport {
                         100,
                         "소설",
                         null,
+                        null,
+                        null,
                         BookStatus.READING,
                         10,
                         0,
@@ -378,6 +417,8 @@ class RecordApiTest extends ApiTestSupport {
                         null,
                         100,
                         "소설",
+                        null,
+                        null,
                         null,
                         BookStatus.READING,
                         101,
@@ -522,6 +563,8 @@ class RecordApiTest extends ApiTestSupport {
                         originalBook.totalPages(),
                         originalBook.genre(),
                         originalBook.coverUrl(),
+                        originalBook.sideCoverUrl(),
+                        originalBook.yes24ProductUrl(),
                         originalBook.status(),
                         originalBook.currentPage(),
                         originalBook.completedCount(),
@@ -671,6 +714,8 @@ class RecordApiTest extends ApiTestSupport {
                         null,
                         100,
                         "소설",
+                        null,
+                        null,
                         null,
                         BookStatus.READING,
                         0,

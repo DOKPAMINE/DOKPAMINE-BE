@@ -26,7 +26,7 @@ class BookLookupServiceTest {
     private static final String ISBN = "9788937460449";
     private final JsonMapper json = JsonMapper.builder().build();
     private final CatalogProperties configured =
-            new CatalogProperties("nlk", "kakao", "google", null);
+            new CatalogProperties("nlk", "kakao", "google", null, null);
 
     private BookLookupService service(Map<String, String> responses) {
         return new BookLookupService(configured, json, (source, isbn) -> responses.get(source));
@@ -174,6 +174,33 @@ class BookLookupServiceTest {
     }
 
     @Test
+    @DisplayName("FR-01 YES24가 제한 시간 안에 응답하지 않아도 기존 표지를 반환한다")
+    void yes24Deadline() throws InterruptedException {
+        CountDownLatch cancelled = new CountDownLatch(1);
+        BookLookupService service = new BookLookupService(
+                new CatalogProperties(null, "kakao", null, "yes24", null), json, (source, isbn) -> {
+                    if (source.equals("kakao")) return """
+                            {"documents":[{"isbn":"9788937460449","thumbnail":"https://example.com/cover.jpg"}]}
+                            """;
+                    if (source.equals("yes24")) {
+                        try {
+                            Thread.sleep(Duration.ofSeconds(5));
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            cancelled.countDown();
+                        }
+                    }
+                    return null;
+                });
+
+        CatalogBook book = assertTimeoutPreemptively(
+                Duration.ofSeconds(3), () -> service.lookup(ISBN, Duration.ofSeconds(1)));
+        assertEquals("https://example.com/cover.jpg", book.coverUrl());
+        assertNull(book.sideCoverUrl());
+        assertTrue(cancelled.await(1, TimeUnit.SECONDS));
+    }
+
+    @Test
     @DisplayName("FR-01 파싱 오류는 건너뛰고 Google 및 Open Library 정보를 읽는다")
     void fallback() {
         CatalogBook google =
@@ -210,7 +237,7 @@ class BookLookupServiceTest {
         List<String> calls = new ArrayList<>();
         BookLookupService service =
                 new BookLookupService(
-                        new CatalogProperties(null, null, null, null),
+                        new CatalogProperties(null, null, null, null, null),
                         json,
                         (source, isbn) -> {
                             calls.add(source);

@@ -8,4 +8,6 @@ public record CatalogBook(
         Integer totalPages,
         String genre,
         String coverUrl,
+        String sideCoverUrl,
+        String yes24ProductUrl,
         String source) {}

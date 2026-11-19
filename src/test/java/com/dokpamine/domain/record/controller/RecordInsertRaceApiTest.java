@@ -231,7 +231,7 @@ class RecordInsertRaceApiTest extends ApiTestSupport {
 
     private Object body(RecordType type, UUID id, User user, String content, int page) {
         return switch (type) {
-            case BOOK -> new BookDto(id, null, content, "저자", null, 100, "소설", null,
+            case BOOK -> new BookDto(id, null, content, "저자", null, 100, "소설", null, null, null,
                     BookStatus.READING, page, 0, null, false, MONDAY, MONDAY);
             case SESSION -> new SessionDto(id, book(user).getId(), MONDAY, MONDAY.plusSeconds(600),
                     600, 0, page, SessionSource.TIMER, false, MONDAY);

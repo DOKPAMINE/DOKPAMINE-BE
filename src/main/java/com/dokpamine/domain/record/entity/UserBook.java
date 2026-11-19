@@ -26,6 +26,12 @@ public class UserBook {
     @Column(name = "cover_url")
     private String coverUrl;
 
+    @Column(name = "side_cover_url", length = 500)
+    private String sideCoverUrl;
+
+    @Column(name = "yes24_product_url", length = 500)
+    private String yes24ProductUrl;
+
     @Enumerated(EnumType.STRING)
     private BookStatus status;
 
@@ -58,6 +64,8 @@ public class UserBook {
             int totalPages,
             String genre,
             String coverUrl,
+            String sideCoverUrl,
+            String yes24ProductUrl,
             BookStatus status,
             int currentPage,
             int completedCount,
@@ -74,6 +82,8 @@ public class UserBook {
         this.totalPages = totalPages;
         this.genre = genre;
         this.coverUrl = coverUrl;
+        this.sideCoverUrl = sideCoverUrl;
+        this.yes24ProductUrl = yes24ProductUrl;
         this.status = status;
         this.currentPage = currentPage;
         this.completedCount = completedCount;
@@ -145,6 +155,22 @@ public class UserBook {
 
     public void setCoverUrl(String coverUrl) {
         this.coverUrl = coverUrl;
+    }
+
+    public String getSideCoverUrl() {
+        return sideCoverUrl;
+    }
+
+    public void setSideCoverUrl(String sideCoverUrl) {
+        this.sideCoverUrl = sideCoverUrl;
+    }
+
+    public String getYes24ProductUrl() {
+        return yes24ProductUrl;
+    }
+
+    public void setYes24ProductUrl(String yes24ProductUrl) {
+        this.yes24ProductUrl = yes24ProductUrl;
     }
 
     public BookStatus getStatus() {
