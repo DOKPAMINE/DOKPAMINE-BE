@@ -6,11 +6,13 @@ import java.time.Duration;
 
 @ConfigurationProperties("dokpamine.catalog")
 public record CatalogProperties(
-        String nlkCertKey, String kakaoRestApiKey, String googleBooksKey, Duration timeout) {
+        String nlkCertKey, String kakaoRestApiKey, String googleBooksKey, String yes24ApiKey,
+        Duration timeout) {
     public CatalogProperties {
         if (nlkCertKey == null) nlkCertKey = "";
         if (kakaoRestApiKey == null) kakaoRestApiKey = "";
         if (googleBooksKey == null) googleBooksKey = "";
+        if (yes24ApiKey == null) yes24ApiKey = "";
         if (timeout == null) timeout = Duration.ofSeconds(4);
     }
 }

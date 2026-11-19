@@ -76,10 +76,11 @@ Windows에서 실행할 때는 실행 환경의 환경 변수에 동일한 값�
 | `NLK_CERT_KEY` | 국립중앙도서관 ISBN 서지정보(쪽수·KDC 우선). [인증키 신청 안내](https://www.nl.go.kr/NL/contents/N31101010000.do) | 없음 |
 | `KAKAO_REST_API_KEY` | 카카오 ISBN 책 검색(제목·저자·출판사·표지 보완). [REST API 키 발급 안내](https://developers.kakao.com/docs/ko/app-setting/app#key) | 없음 |
 | `GOOGLE_BOOKS_KEY` | Google Books 조회. [API 키 발급 안내](https://developers.google.com/books/docs/v1/using#APIKey) | 없음 |
-| `YES24_API_KEY` | YES24 도서 API. 조회 연동 전이라 아직 사용하지 않습니다 | 없음 |
+| `YES24_API_KEY` | YES24 ISBN 상세 조회로 앞표지·책등·상품 링크 제공. [API 키 발급 안내](https://developers.yes24.com/docs) | 없음 |
 | `SPRING_PROFILES_ACTIVE=prod` + `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | PostgreSQL 운영 설정 | - |
 
 조회 순서는 국립중앙도서관 → 카카오 → Google Books → Open Library이며, 앞 결과의 빈 칸만 뒤 결과로 채웁니다.
+YES24 키가 있으면 상품 상세 조회를 병행하여 YES24 앞표지를 우선 사용하고 책등·상품 링크를 함께 반환합니다.
 키가 비어 있는 조회처는 건너뜁니다. 모든 키가 없으면 Open Library만 조회하므로 국내 도서 정보가 부족하거나 제목이 로마자로 나올 수 있습니다.
 
 ## 문서

@@ -25,13 +25,14 @@ public class RecordInsertRepository {
     public boolean insert(UserBook book) {
         return insert("""
                 insert into user_books (id, user_id, isbn, title, author, publisher, total_pages,
-                    genre, cover_url, status, current_page, completed_count, completed_at, deleted,
-                    created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    genre, cover_url, side_cover_url, yes24_product_url, status, current_page,
+                    completed_count, completed_at, deleted, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict do nothing
                 """,
                 book.getId(), book.getUserId(), book.getIsbn(), book.getTitle(), book.getAuthor(),
                 book.getPublisher(), book.getTotalPages(), book.getGenre(), book.getCoverUrl(),
+                book.getSideCoverUrl(), book.getYes24ProductUrl(),
                 book.getStatus().name(), book.getCurrentPage(), book.getCompletedCount(),
                 timestamp(book.getCompletedAt()), book.getDeleted(), timestamp(book.getCreatedAt()),
                 timestamp(book.getUpdatedAt()));

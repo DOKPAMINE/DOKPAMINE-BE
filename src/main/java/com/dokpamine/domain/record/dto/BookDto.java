@@ -7,6 +7,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.validation.constraints.*;
 
+import org.hibernate.validator.constraints.URL;
+
 import tools.jackson.databind.annotation.JsonDeserialize;
 
 import java.time.Instant;
@@ -29,6 +31,10 @@ public record BookDto(
         @NotBlank(message = "공백이 아닌 값을 입력해 주세요.")
         @Size(message = "{max}자 이하로 입력해 주세요.", max = 30) String genre,
         @Size(message = "{max}자 이하로 입력해 주세요.", max = 500) String coverUrl,
+        @URL(protocol = "https", message = "올바른 HTTPS 주소를 입력해 주세요.")
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 500) String sideCoverUrl,
+        @URL(protocol = "https", message = "올바른 HTTPS 주소를 입력해 주세요.")
+        @Size(message = "{max}자 이하로 입력해 주세요.", max = 500) String yes24ProductUrl,
         @NotNull(message = "필수 값을 입력해 주세요.") BookStatus status,
         @JsonProperty(required = true)
         @Min(value = 0, message = "0 이상의 값을 입력해 주세요.") int currentPage,
@@ -53,6 +59,8 @@ public record BookDto(
                 value.getTotalPages(),
                 value.getGenre(),
                 value.getCoverUrl(),
+                value.getSideCoverUrl(),
+                value.getYes24ProductUrl(),
                 value.getStatus(),
                 value.getCurrentPage(),
                 value.getCompletedCount(),

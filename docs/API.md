@@ -37,10 +37,11 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 | GET | `/api/catalog/isbn/{isbn}` | `CatalogBook` · 400 잘못된 ISBN · 404 정보 없음 |
 | GET | `/api/catalog/genres` | `["소설","SF",…,"기타"]` |
 
-`CatalogBook = {isbn, title?, author?, publisher?, totalPages?, genre?, coverUrl?, source}`. 일부 필드가 비어 있을 수 있으며, 앱은 빈 칸을 사용자 입력으로 채운다.
+`CatalogBook = {isbn, title?, author?, publisher?, totalPages?, genre?, coverUrl?, sideCoverUrl?, yes24ProductUrl?, source}`. 일부 필드가 비어 있을 수 있으며, 앱은 빈 칸을 사용자 입력으로 채운다.
 조회 순서는 국립중앙도서관(`NLK_CERT_KEY`, 쪽수·KDC 우선) → 카카오(`KAKAO_REST_API_KEY`, ISBN 조회로 제목·저자·출판사·표지 보완) → Google Books(`GOOGLE_BOOKS_KEY`) → Open Library(키 불필요)다.
 키가 비어 있는 조회처는 호출하지 않고, 앞 결과의 빈 칸만 뒤 결과로 채운다. 외부 조회 실패 시에도 다음 조회처로 넘어간다.
-`source` 가능 값은 `nlk|kakao|google|openlibrary`이며, 병합에 사용된 첫 결과의 값을 유지한다.
+- `YES24_API_KEY`가 있으면 YES24의 ISBN-13 상품 상세 조회를 기존 조회와 동시에 시작한다. 요청 ISBN과 같은 상품의 유효한 HTTPS 상품 링크가 있을 때, YES24 앞표지를 `coverUrl`에 우선 사용하고 책등과 상품 링크는 `sideCoverUrl`, `yes24ProductUrl`로 반환한다. 앞표지가 비어 있으면 기존 표지를 쓴다. 제목·저자·출판사는 기존 조회 결과의 빈 칸만 채운다. YES24 조회가 실패하거나 조회 제한 시간 안에 끝나지 않으면 기존 조회 결과를 사용한다.
+- `source`는 병합에 사용된 첫 기존 조회처(`nlk|kakao|google|openlibrary`)다. YES24만 도서 정보를 반환하면 `yes24`다. YES24 상품 링크가 있으면 앱에서 YES24 출처와 상품 상세 링크를 표시한다. YES24는 등록된 책등이 없는 상품에도 대체 이미지 URL을 반환할 수 있다.
 
 ## 개인 기록 동기화 (NFR-04, NFR-05)
 
@@ -70,6 +71,7 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 
 ```text
 BookDto    {id, isbn?, title(1~200), author(1~100), publisher?, totalPages(≥1), genre, coverUrl?,
+            sideCoverUrl?, yes24ProductUrl?,
             status: WANT|READING|DONE, currentPage(≥0, ≤totalPages), completedCount, completedAt?,
             deleted, createdAt, updatedAt}
 SessionDto {id, bookId, startedAt, endedAt, activeSeconds, startPage(규칙 7 참고), endPage?(규칙 7 참고),
@@ -78,6 +80,8 @@ ReviewDto  {id, bookId, oneLine?(≤100), body?(≤5000), visibility: PRIVATE|PU
            // oneLine 과 body 중 하나는 있어야 함. 기본값 PRIVATE (NFR-09)
 QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, updatedAt}
 ```
+
+**AOS 영향 있음** — 앱은 `sideCoverUrl`, `yes24ProductUrl`을 nullable HTTPS 주소(최대 500자)로 받아 등록 결과와 함께 저장하고 책 PUT·스냅샷에서 동기화한다. 앞표지는 기존 `coverUrl`을 그대로 사용한다. 책 PUT에서 새 필드를 생략하거나 `null`로 보내면 같은 ISBN의 기존 값을 유지한다. 동일 도서의 ISBN-10과 ISBN-13 표기도 같은 ISBN으로 본다. ISBN을 바꾸면 이전 ISBN의 책등·링크는 새 요청 값으로 교체하며, 새 값이 없는 필드는 비워진다. 기존 기록의 새 필드는 초기에는 `null`이다.
 
 ### 감상 버전과 충돌 처리 (NFR-05, NFR-09)
 

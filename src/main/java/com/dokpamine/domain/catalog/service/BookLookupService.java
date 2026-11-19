@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -43,6 +44,28 @@ public class BookLookupService {
         long deadline = System.nanoTime() + timeout.toNanos();
         String isbn = Isbn.normalize(rawIsbn);
         if (isbn == null) throw ApiException.badRequest("올바른 ISBN 이 아니에요.");
+        if (TextValues.isBlank(properties.yes24ApiKey())) return lookupMetadata(isbn, deadline);
+
+        // 기존 서지 조회의 조기 종료와 관계없이 같은 제한 시간 안에서 표지를 조회한다.
+        FutureTask<CatalogBook> images = new FutureTask<>(() -> yes24(isbn));
+        Thread.startVirtualThread(images);
+        try {
+            CatalogBook metadata = lookupMetadata(isbn, deadline);
+            if (Thread.currentThread().isInterrupted()) return metadata;
+            try {
+                return merge(metadata, await("yes24", images, deadline));
+            } catch (TimeoutException e) {
+                return metadata;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return metadata;
+            }
+        } finally {
+            images.cancel(true);
+        }
+    }
+
+    private CatalogBook lookupMetadata(String isbn, long deadline) {
         Map<String, Supplier<CatalogBook>> sources = new LinkedHashMap<>();
         if (!TextValues.isBlank(properties.nlkCertKey()))
             sources.put("nlk", () -> nlk(isbn));
@@ -59,7 +82,7 @@ public class BookLookupService {
             // 연결과 본문 읽기를 포함해 남은 시간만 기다린다.
             Thread.startVirtualThread(task);
             try {
-                merged = merge(merged, task.get(deadline - System.nanoTime(), TimeUnit.NANOSECONDS));
+                merged = merge(merged, await(source.getKey(), task, deadline));
                 if (isComplete(merged)) break;
             } catch (TimeoutException e) {
                 task.cancel(true);
@@ -68,14 +91,22 @@ public class BookLookupService {
                 task.cancel(true);
                 Thread.currentThread().interrupt();
                 break;
-            } catch (ExecutionException e) {
-                Throwable cause = e.getCause();
-                if (cause instanceof Error error) throw error;
-                // FR-01: 예외 메시지에는 키를 포함한 URL이 있을 수 있으므로 예외 종류만 남긴다.
-                log.warn("{} 도서 조회 실패: {}", source.getKey(), cause.getClass().getSimpleName());
             }
         }
         return merged;
+    }
+
+    private static CatalogBook await(String source, FutureTask<CatalogBook> task, long deadline)
+            throws InterruptedException, TimeoutException {
+        try {
+            return task.get(deadline - System.nanoTime(), TimeUnit.NANOSECONDS);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Error error) throw error;
+            // FR-01: 예외 메시지에는 키를 포함한 URL이 있을 수 있으므로 예외 종류만 남긴다.
+            log.warn("{} 도서 조회 실패: {}", source, cause.getClass().getSimpleName());
+            return null;
+        }
     }
 
     private static CatalogBook merge(CatalogBook preferred, CatalogBook fallback) {
@@ -88,7 +119,11 @@ public class BookLookupService {
                 first(preferred.publisher(), fallback.publisher()),
                 first(preferred.totalPages(), fallback.totalPages()),
                 first(preferred.genre(), fallback.genre()),
-                first(preferred.coverUrl(), fallback.coverUrl()),
+                fallback.yes24ProductUrl() != null
+                        ? first(fallback.coverUrl(), preferred.coverUrl())
+                        : first(preferred.coverUrl(), fallback.coverUrl()),
+                first(preferred.sideCoverUrl(), fallback.sideCoverUrl()),
+                first(preferred.yes24ProductUrl(), fallback.yes24ProductUrl()),
                 preferred.source());
     }
 
@@ -133,6 +168,8 @@ public class BookLookupService {
                     pages,
                     Genres.fromKdc(text(item, "KDC")),
                     https(text(item, "TITLE_URL")),
+                    null,
+                    null,
                     "nlk");
         }
         return null;
@@ -154,6 +191,8 @@ public class BookLookupService {
                     null,
                     null,
                     https(text(item, "thumbnail")),
+                    null,
+                    null,
                     "kakao");
         }
         return null;
@@ -175,6 +214,8 @@ public class BookLookupService {
                 positive(info.path("pageCount").asInt(0)),
                 Genres.fromCategory(string(info.path("categories").path(0))),
                 https(text(info.path("imageLinks"), "thumbnail")),
+                null,
+                null,
                 "google");
     }
 
@@ -199,7 +240,45 @@ public class BookLookupService {
                 positive(book.path("number_of_pages").asInt(0)),
                 genre,
                 https(text(book.path("cover"), "medium")),
+                null,
+                null,
                 "openlibrary");
+    }
+
+    private CatalogBook yes24(String isbn) {
+        String body = fetcher.fetch("yes24", isbn);
+        if (body == null) return null;
+        JsonNode response = json.readTree(body);
+        if (!response.path("success").asBoolean(false)) return null;
+        for (JsonNode item : response.path("data").path("items")) {
+            if (!isbn.equals(Isbn.normalize(text(item, "isbn13")))) continue;
+            // 표지를 표시할 때 출처로 연결할 수 있는 상품 정보만 사용한다.
+            String productUrl = httpsUrl(text(item, "link"));
+            if (productUrl == null) continue;
+            return new CatalogBook(
+                    isbn,
+                    text(item, "title"),
+                    text(item, "author"),
+                    text(item, "publisher"),
+                    null,
+                    null,
+                    httpsUrl(text(item, "cover")),
+                    httpsUrl(text(item, "sideCover")),
+                    productUrl,
+                    "yes24");
+        }
+        return null;
+    }
+
+    private static String httpsUrl(String value) {
+        if (value == null || value.length() > 500) return null;
+        try {
+            URI uri = URI.create(value);
+            return "https".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null
+                    && uri.getUserInfo() == null ? value : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private static <T> T first(T a, T b) {

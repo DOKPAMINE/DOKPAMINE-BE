@@ -1,5 +1,6 @@
 package com.dokpamine.domain.record.service;
 
+import com.dokpamine.domain.catalog.util.Isbn;
 import com.dokpamine.domain.record.dto.BookDto;
 import com.dokpamine.domain.record.dto.QuoteDto;
 import com.dokpamine.domain.record.dto.ReviewDto;
@@ -73,6 +74,8 @@ public class RecordService {
                             dto.totalPages(),
                             dto.genre(),
                             dto.coverUrl(),
+                            TextValues.trimToNull(dto.sideCoverUrl()),
+                            TextValues.trimToNull(dto.yes24ProductUrl()),
                             dto.status(),
                             dto.currentPage(),
                             dto.completedCount(),
@@ -92,6 +95,12 @@ public class RecordService {
         if (!dto.deleted() && sessions.existsOutsidePageRange(dto.id(), dto.totalPages())) {
             throw ApiException.badRequest("전체 쪽수는 저장된 독서 세션의 시작·종료 페이지보다 작을 수 없어요.");
         }
+        // 구버전 앱이 같은 ISBN의 책을 동기화하더라도 추가된 URL은 보존한다.
+        boolean isbnChanged = !sameIsbn(book.getIsbn(), dto.isbn());
+        String sideCoverUrl = TextValues.trimToNull(dto.sideCoverUrl());
+        String yes24ProductUrl = TextValues.trimToNull(dto.yes24ProductUrl());
+        if (isbnChanged || sideCoverUrl != null) book.setSideCoverUrl(sideCoverUrl);
+        if (isbnChanged || yes24ProductUrl != null) book.setYes24ProductUrl(yes24ProductUrl);
         book.setIsbn(dto.isbn());
         book.setTitle(TextValues.trim(dto.title()));
         book.setAuthor(TextValues.trim(dto.author()));
@@ -106,6 +115,12 @@ public class RecordService {
         book.setDeleted(dto.deleted());
         book.setUpdatedAt(dto.updatedAt());
         return new BookDto(book);
+    }
+
+    private static boolean sameIsbn(String saved, String requested) {
+        if (Objects.equals(saved, requested)) return true;
+        String normalized = Isbn.normalize(saved);
+        return normalized != null && normalized.equals(Isbn.normalize(requested));
     }
 
     public SessionDto upsertSession(UUID userId, SessionDto dto) {

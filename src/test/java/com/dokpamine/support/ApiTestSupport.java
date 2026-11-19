@@ -34,7 +34,8 @@ import java.util.*;
         properties = {
             "dokpamine.catalog.nlk-cert-key=test",
             "dokpamine.catalog.kakao-rest-api-key=test",
-            "dokpamine.catalog.google-books-key=test"
+            "dokpamine.catalog.google-books-key=test",
+            "dokpamine.catalog.yes24-api-key=test"
         })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -85,6 +86,8 @@ public abstract class ApiTestSupport {
                         null,
                         240,
                         "소설",
+                        null,
+                        null,
                         null,
                         BookStatus.READING,
                         0,
