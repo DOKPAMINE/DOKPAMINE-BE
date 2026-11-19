@@ -11,7 +11,48 @@ public final class Genres {
                     "소설", "SF", "시/에세이", "인문", "역사", "사회/정치", "경제/경영", "자기계발", "과학", "예술", "만화",
                     "기타");
 
+    // YES24 goodsSortNm의 분야명(국내도서·외국도서·eBook 2단계)을 앱 장르로 옮긴다.
+    private static final Map<String, String> YES24 =
+            Map.ofEntries(
+                    Map.entry("소설/시/희곡", "소설"),
+                    Map.entry("문학 소설", "소설"),
+                    Map.entry("소설", "소설"),
+                    Map.entry("로맨스", "소설"),
+                    Map.entry("판타지/무협", "소설"),
+                    Map.entry("라이트노벨", "소설"),
+                    Map.entry("BL", "소설"),
+                    Map.entry("에세이", "시/에세이"),
+                    Map.entry("에세이 시", "시/에세이"),
+                    Map.entry("인문", "인문"),
+                    Map.entry("인문 사회", "인문"),
+                    Map.entry("종교", "인문"),
+                    Map.entry("역사", "역사"),
+                    Map.entry("사회 정치", "사회/정치"),
+                    Map.entry("경제 경영", "경제/경영"),
+                    Map.entry("자기계발", "자기계발"),
+                    Map.entry("자연과학", "과학"),
+                    Map.entry("IT 모바일", "과학"),
+                    Map.entry("컴퓨터", "과학"),
+                    Map.entry("예술", "예술"),
+                    Map.entry("예술 대중문화", "예술"),
+                    Map.entry("만화/라이트노벨", "만화"),
+                    Map.entry("만화", "만화"),
+                    Map.entry("BL만화", "만화"));
+
     private Genres() {}
+
+    /**
+     * YES24 관리 분류("국내도서-소설/시/희곡")를 앱 장르로 바꾼다. 대분류만 있으면 장르를 알 수 없으므로 null이고, 표에 없는
+     * 분야(여행, 참고서 등)는 기타다(FR-01).
+     */
+    public static String fromYes24(String goodsSortNm) {
+        String value = TextValues.trim(goodsSortNm);
+        int separator = value == null ? -1 : value.indexOf('-');
+        if (separator < 0) return null;
+        String field = TextValues.trimToNull(value.substring(separator + 1));
+        if (field == null) return null;
+        return YES24.getOrDefault(field, "기타");
+    }
 
     public static String fromKdc(String raw) {
         String value = TextValues.trim(raw);

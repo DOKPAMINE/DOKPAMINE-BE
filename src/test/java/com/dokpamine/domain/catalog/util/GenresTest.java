@@ -159,6 +159,42 @@ class GenresTest {
         assertNull(Genres.fromKdc(kdc));
     }
 
+    @ParameterizedTest(name = "{0} → {1}")
+    @CsvSource({
+        "국내도서-소설/시/희곡,소설",
+        "국내도서-에세이,시/에세이",
+        "국내도서-인문,인문",
+        "국내도서-종교,인문",
+        "국내도서-역사,역사",
+        "국내도서-사회 정치,사회/정치",
+        "국내도서-경제 경영,경제/경영",
+        "국내도서-자기계발,자기계발",
+        "국내도서-자연과학,과학",
+        "국내도서-IT 모바일,과학",
+        "국내도서-예술,예술",
+        "국내도서-만화/라이트노벨,만화",
+        "국내도서-여행,기타",
+        "국내도서-인물,기타",
+        "외국도서-문학 소설,소설",
+        "외국도서-컴퓨터,과학",
+        "eBook-판타지/무협,소설",
+        "eBook-에세이 시,시/에세이",
+        "eBook-BL만화,만화",
+        "' 국내도서- 자기계발 ',자기계발",
+    })
+    @DisplayName("FR-01 YES24 관리 분류의 분야명을 앱 장르로 매핑한다")
+    void yes24(String goodsSortNm, String genre) {
+        assertEquals(genre, Genres.fromYes24(goodsSortNm));
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "국내도서", "도서", "국내도서-", "국내도서- "})
+    @DisplayName("FR-01 YES24 분야명이 없으면 다른 조회처의 장르로 채울 수 있게 비워 둔다")
+    void yes24Blank(String goodsSortNm) {
+        assertNull(Genres.fromYes24(goodsSortNm));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"892.83", "890", "879.3", "839.1", "829"})
     @DisplayName("FR-01 셋째 자리가 언어인 문학 분류는 형식을 추측하지 않고 비워 둔다")
