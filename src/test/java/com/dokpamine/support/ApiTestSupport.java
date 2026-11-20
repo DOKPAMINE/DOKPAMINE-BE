@@ -35,7 +35,8 @@ import java.util.*;
             "dokpamine.catalog.nlk-cert-key=test",
             "dokpamine.catalog.kakao-rest-api-key=test",
             "dokpamine.catalog.google-books-key=test",
-            "dokpamine.catalog.yes24-api-key=test"
+            "dokpamine.catalog.yes24-api-key=test",
+            "dokpamine.catalog.data4library-auth-key=test"
         })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

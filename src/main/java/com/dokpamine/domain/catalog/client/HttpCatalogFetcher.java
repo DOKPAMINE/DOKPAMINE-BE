@@ -35,6 +35,12 @@ public class HttpCatalogFetcher implements CatalogFetcher {
                                             "https://www.nl.go.kr/seoji/SearchApi.do?cert_key={key}&result_style=json&page_no=1&page_size=1&isbn={isbn}",
                                             properties.nlkCertKey(),
                                             isbn);
+                    case "data4library" ->
+                            http.get()
+                                    .uri(
+                                            "https://data4library.kr/api/srchDtlList?authKey={key}&isbn13={isbn}&format=json",
+                                            properties.data4libraryAuthKey(),
+                                            isbn);
                     case "kakao" ->
                             http.get()
                                     .uri(
