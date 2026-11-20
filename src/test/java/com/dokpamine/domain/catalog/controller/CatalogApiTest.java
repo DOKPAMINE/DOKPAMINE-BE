@@ -10,6 +10,8 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
+import java.util.List;
+
 class CatalogApiTest extends ApiTestSupport {
     @Test
     @DisplayName("FR-01 ISBN 조회는 기존 JSON 계약으로 쪽수와 표지를 병합한다")
@@ -96,11 +98,11 @@ class CatalogApiTest extends ApiTestSupport {
 
         var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
         assertEquals(312, book.path("totalPages").asInt());
-        assertEquals("소설", book.path("genre").asString());
+        assertEquals("소설/시", book.path("genre").asString());
     }
 
     @Test
-    @DisplayName("FR-01 YES24 소설/시/희곡 분야는 KDC 8x1이면 시로 정한다")
+    @DisplayName("FR-01 YES24 소설/시/희곡 분야의 시집은 소설/시로 정한다")
     void yes24NovelKeepsPoetry() throws Exception {
         String isbn = "9788937460449";
         when(fetcher.fetch("nlk", isbn)).thenReturn("""
@@ -109,7 +111,7 @@ class CatalogApiTest extends ApiTestSupport {
         when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-소설/시/희곡", 120));
 
         var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
-        assertEquals("시", book.path("genre").asString());
+        assertEquals("소설/시", book.path("genre").asString());
     }
 
     @Test
@@ -122,7 +124,7 @@ class CatalogApiTest extends ApiTestSupport {
         when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-인물", 400));
 
         var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
-        assertEquals("역사", book.path("genre").asString());
+        assertEquals("인문/사회", book.path("genre").asString());
     }
 
     @Test
@@ -132,20 +134,20 @@ class CatalogApiTest extends ApiTestSupport {
         when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-IT 모바일", 584));
 
         var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
-        assertEquals("과학", book.path("genre").asString());
+        assertEquals("과학/IT", book.path("genre").asString());
         assertEquals(584, book.path("totalPages").asInt());
         assertEquals("yes24", book.path("source").asString());
     }
 
     @ParameterizedTest(name = "{0}: YES24 {1}, KDC {2} → {3}")
     @CsvSource({
-        "'데미안, 싯다르타',국내도서-소설/시/희곡,853,소설",
-        "모순,국내도서-소설/시/희곡,813.62,소설",
-        "쇼펜하우어 인생수업,국내도서-인문,165.47,인문",
+        "'데미안, 싯다르타',국내도서-소설/시/희곡,853,소설/시",
+        "모순,국내도서-소설/시/희곡,813.62,소설/시",
+        "쇼펜하우어 인생수업,국내도서-인문,165.47,인문/사회",
         "마음의 어휘력,국내도서-에세이,818,에세이",
-        "큰별쌤 한국사,국내도서-수험서 자격증,911,역사",
+        "큰별쌤 한국사,국내도서-수험서 자격증,911,인문/사회",
     })
-    @DisplayName("FR-01 팀에서 비교한 도서는 YES24 분야를 우선하고 KDC로 시와 기타를 보완한다")
+    @DisplayName("FR-01 팀에서 비교한 도서는 YES24 분야를 우선하고 기타는 KDC로 보완한다")
     void teamComparedBooks(String title, String goodsSortNm, String kdc, String genre)
             throws Exception {
         String isbn = "9788937460449";
@@ -199,13 +201,11 @@ class CatalogApiTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("FR-01 장르 목록은 시와 에세이를 나눈 열세 장르다")
+    @DisplayName("FR-01 장르 목록은 YES24 대분야에 맞춘 아홉 장르다")
     void genres() throws Exception {
         var genres = request(get("/api/catalog/genres"), user(), null, 200);
-        assertEquals(13, genres.size());
-        assertEquals("소설", genres.path(0).asString());
-        assertEquals("시", genres.path(2).asString());
-        assertEquals("에세이", genres.path(3).asString());
-        assertEquals("기타", genres.path(12).asString());
+        assertEquals(
+                List.of("소설/시", "에세이", "인문/사회", "경제/경영", "자기계발", "과학/IT", "예술", "만화", "기타"),
+                json.convertValue(genres, List.class));
     }
 }

@@ -60,7 +60,7 @@ class BookLookupServiceTest {
         assertNotNull(book);
         assertEquals(312, book.totalPages());
         assertEquals("홍길동", book.author());
-        assertEquals("소설", book.genre());
+        assertEquals("소설/시", book.genre());
         assertEquals("nlk", book.source());
     }
 
@@ -135,7 +135,7 @@ class BookLookupServiceTest {
         assertEquals(List.of("nlk", "kakao"), calls);
         assertEquals("국내 도서", book.title());
         assertEquals(312, book.totalPages());
-        assertEquals("소설", book.genre());
+        assertEquals("소설/시", book.genre());
         assertEquals("https://example.com/kakao.jpg", book.coverUrl());
         assertEquals("nlk", book.source());
     }
@@ -214,7 +214,7 @@ class BookLookupServiceTest {
                                         """))
                         .lookup(ISBN);
         assertEquals("Google 도서: 부제", google.title());
-        assertEquals("과학", google.genre());
+        assertEquals("과학/IT", google.genre());
         CatalogBook open =
                 service(
                                 Map.of(
@@ -227,7 +227,7 @@ class BookLookupServiceTest {
         assertEquals("저자", open.author());
         assertEquals("출판사", open.publisher());
         assertEquals(500, open.totalPages());
-        assertEquals("역사", open.genre());
+        assertEquals("인문/사회", open.genre());
         assertEquals("https://example.com/open.jpg", open.coverUrl());
     }
 
