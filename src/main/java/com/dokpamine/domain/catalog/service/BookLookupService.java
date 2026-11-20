@@ -132,12 +132,12 @@ public class BookLookupService {
 
     /**
      * FR-01: YES24 분야는 자기계발·경제·IT처럼 서점 분류에 가까워 기본으로 우선한다. 다만 "소설/시/희곡"은 시와 SF를
-     * 구분하지 못하고 기타는 정보가 없으므로, 이때는 기존 조회처의 더 구체적인 장르를 유지한다.
+     * 구분하지 못하므로 KDC 8x1(시)이나 SF가 있으면 그 장르를 쓰고, 기타는 정보가 없으므로 기존 장르를 유지한다.
      */
     private static String yes24Genre(String yes24, String other) {
         if (yes24 == null || other == null) return first(yes24, other);
         if (yes24.equals("기타")) return other;
-        if (yes24.equals("소설") && (other.equals("SF") || other.equals("시/에세이"))) return other;
+        if (yes24.equals("소설") && (other.equals("SF") || other.equals("시"))) return other;
         return yes24;
     }
 

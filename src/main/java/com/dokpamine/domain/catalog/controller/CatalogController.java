@@ -67,7 +67,7 @@ public class CatalogController {
     }
 
     @GetMapping("/genres")
-    @Operation(summary = "지원 장르 목록 조회", description = "앱에서 선택하고 독서 통계에 사용하는 열두 장르를 반환합니다.")
+    @Operation(summary = "지원 장르 목록 조회", description = "앱에서 선택하고 독서 통계에 사용하는 열세 장르를 반환합니다. 2026-11 이전 기록에는 시/에세이가 남아 있을 수 있습니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "지원하는 장르 이름 목록"),
         @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음", content = @Content)

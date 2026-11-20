@@ -98,7 +98,7 @@ class CatalogApiTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("FR-01 YES24 소설/시/희곡 분야보다 국립중앙도서관의 시 장르를 우선한다")
+    @DisplayName("FR-01 YES24 소설/시/희곡 분야는 KDC 8x1이면 시로 정한다")
     void yes24NovelKeepsPoetry() throws Exception {
         String isbn = "9788937460449";
         when(fetcher.fetch("nlk", isbn)).thenReturn("""
@@ -107,7 +107,7 @@ class CatalogApiTest extends ApiTestSupport {
         when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-소설/시/희곡", 120));
 
         var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
-        assertEquals("시/에세이", book.path("genre").asString());
+        assertEquals("시", book.path("genre").asString());
     }
 
     @Test
@@ -176,11 +176,13 @@ class CatalogApiTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("FR-01 장르 목록은 기존 열두 장르를 유지한다")
+    @DisplayName("FR-01 장르 목록은 시와 에세이를 나눈 열세 장르다")
     void genres() throws Exception {
         var genres = request(get("/api/catalog/genres"), user(), null, 200);
-        assertEquals(12, genres.size());
+        assertEquals(13, genres.size());
         assertEquals("소설", genres.path(0).asString());
-        assertEquals("기타", genres.path(11).asString());
+        assertEquals("시", genres.path(2).asString());
+        assertEquals("에세이", genres.path(3).asString());
+        assertEquals("기타", genres.path(12).asString());
     }
 }

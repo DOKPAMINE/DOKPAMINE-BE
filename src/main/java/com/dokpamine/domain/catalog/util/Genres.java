@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 public final class Genres {
     public static final List<String> ALL =
             List.of(
-                    "소설", "SF", "시/에세이", "인문", "역사", "사회/정치", "경제/경영", "자기계발", "과학", "예술", "만화",
+                    "소설", "SF", "시", "에세이", "인문", "역사", "사회/정치", "경제/경영", "자기계발", "과학", "예술", "만화",
                     "기타");
 
     // YES24 goodsSortNm의 분야명(국내도서·외국도서·eBook 2단계)을 앱 장르로 옮긴다.
@@ -21,8 +21,9 @@ public final class Genres {
                     Map.entry("판타지/무협", "소설"),
                     Map.entry("라이트노벨", "소설"),
                     Map.entry("BL", "소설"),
-                    Map.entry("에세이", "시/에세이"),
-                    Map.entry("에세이 시", "시/에세이"),
+                    Map.entry("에세이", "에세이"),
+                    // eBook은 에세이와 시를 묶어 주므로 더 흔한 에세이로 둔다.
+                    Map.entry("에세이 시", "에세이"),
                     Map.entry("인문", "인문"),
                     Map.entry("인문 사회", "인문"),
                     Map.entry("종교", "인문"),
@@ -66,7 +67,8 @@ public final class Genres {
         if (code >= 800 && code <= 899)
             return switch (code % 10) {
                 case 3 -> "소설";
-                case 1, 4, 6 -> "시/에세이";
+                case 1 -> "시";
+                case 4, 6 -> "에세이";
                 default -> "인문";
             };
         if (code >= 900) return "역사";
@@ -82,8 +84,8 @@ public final class Genres {
         String c = category.toLowerCase(Locale.ROOT);
         if (english(c, "sf") || english(c, "science[ -]fiction") || c.contains("과학소설")) return "SF";
         if (c.contains("만화") || english(c, "comics?") || english(c, "graphic novels?")) return "만화";
-        if (c.contains("에세이") || c.contains("시/") || english(c, "poetry") || english(c, "essays?"))
-            return "시/에세이";
+        if (c.contains("에세이") || english(c, "essays?")) return "에세이";
+        if (c.contains("시/") || english(c, "poetry")) return "시";
         if (c.contains("소설") || english(c, "fiction")) return "소설";
         if (c.contains("역사") || english(c, "history")) return "역사";
         if (c.contains("경제")
