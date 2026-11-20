@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.dokpamine.support.ApiTestSupport;
 
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class CatalogApiTest extends ApiTestSupport {
     @Test
@@ -133,6 +135,27 @@ class CatalogApiTest extends ApiTestSupport {
         assertEquals("과학", book.path("genre").asString());
         assertEquals(584, book.path("totalPages").asInt());
         assertEquals("yes24", book.path("source").asString());
+    }
+
+    @ParameterizedTest(name = "{0}: YES24 {1}, KDC {2} → {3}")
+    @CsvSource({
+        "'데미안, 싯다르타',국내도서-소설/시/희곡,853,소설",
+        "모순,국내도서-소설/시/희곡,813.62,소설",
+        "쇼펜하우어 인생수업,국내도서-인문,165.47,인문",
+        "마음의 어휘력,국내도서-에세이,818,에세이",
+        "큰별쌤 한국사,국내도서-수험서 자격증,911,역사",
+    })
+    @DisplayName("FR-01 팀에서 비교한 도서는 YES24 분야를 우선하고 KDC로 시와 기타를 보완한다")
+    void teamComparedBooks(String title, String goodsSortNm, String kdc, String genre)
+            throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("nlk", isbn)).thenReturn("""
+                {"docs":[{"EA_ISBN":"%s","TITLE":"%s","KDC":"%s"}]}
+                """.formatted(isbn, title, kdc));
+        when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, goodsSortNm, 300));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals(genre, book.path("genre").asString());
     }
 
     private static String yes24(String isbn, String goodsSortNm, int pages) {
