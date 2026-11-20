@@ -20,12 +20,14 @@ dokpamine:
   jwt:
     ttl: 14d
   catalog:
-    # 국립중앙도서관(쪽수·KDC 우선) → 카카오(국내 도서 제목·표지 보완) → Google Books → Open Library(마지막 대체).
+    # 국립중앙도서관(쪽수 우선) → 정보나루(KDC) → 카카오(국내 도서 제목·표지 보완) → Google Books → Open Library(마지막 대체).
     # 키가 없는 조회처는 건너뛰고 앞 결과의 빈 칸만 뒤 결과로 채운다. Open Library는 키가 필요 없다.
     nlk-cert-key: ${NLK_CERT_KEY:}
     kakao-rest-api-key: ${KAKAO_REST_API_KEY:}
     google-books-key: ${GOOGLE_BOOKS_KEY:}
-    # YES24는 기존 조회와 동시에 ISBN 상세에서 표지 정보를 조회한다.
+    # 국립중앙도서관은 KDC를 거의 주지 않아 도서관 정보나루의 KDC로 장르를 보완한다.
+    data4library-auth-key: ${DATA4LIBRARY_AUTH_KEY:}
+    # YES24는 기존 조회와 동시에 ISBN 상세에서 표지·분야·쪽수를 조회한다.
     yes24-api-key: ${YES24_API_KEY:}
     timeout: 4s
 

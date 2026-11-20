@@ -69,6 +69,9 @@ public class BookLookupService {
         Map<String, Supplier<CatalogBook>> sources = new LinkedHashMap<>();
         if (!TextValues.isBlank(properties.nlkCertKey()))
             sources.put("nlk", () -> nlk(isbn));
+        // FR-01: 국립중앙도서관은 KDC를 거의 주지 않아 도서관이 분류한 정보나루 KDC로 장르를 보완한다.
+        if (!TextValues.isBlank(properties.data4libraryAuthKey()))
+            sources.put("data4library", () -> data4library(isbn));
         if (!TextValues.isBlank(properties.kakaoRestApiKey()))
             sources.put("kakao", () -> kakao(isbn));
         if (!TextValues.isBlank(properties.googleBooksKey()))
@@ -154,13 +157,6 @@ public class BookLookupService {
         if (body == null) return null;
         for (JsonNode item : json.readTree(body).path("docs")) {
             if (!isbn.equals(Isbn.normalize(text(item, "EA_ISBN")))) continue;
-            String author = text(item, "AUTHOR");
-            if (author != null) {
-                author = author.split(";", 2)[0];
-                author =
-                        TextValues.trimToNull(
-                                author.substring(author.indexOf(':') + 1).split(",", 2)[0]);
-            }
             Integer pages = null;
             String pageText = text(item, "PAGE");
             if (pageText != null) {
@@ -175,7 +171,7 @@ public class BookLookupService {
             return new CatalogBook(
                     isbn,
                     text(item, "TITLE"),
-                    author,
+                    firstAuthor(text(item, "AUTHOR")),
                     text(item, "PUBLISHER"),
                     pages,
                     Genres.fromKdc(text(item, "KDC")),
@@ -185,6 +181,35 @@ public class BookLookupService {
                     "nlk");
         }
         return null;
+    }
+
+    private CatalogBook data4library(String isbn) {
+        String body = fetcher.fetch("data4library", isbn);
+        if (body == null) return null;
+        // 인증 오류나 미등록 ISBN은 errCode와 빈 detail로 오므로 다음 조회처로 넘어간다.
+        for (JsonNode detail : json.readTree(body).path("response").path("detail")) {
+            JsonNode item = detail.path("book");
+            if (!isbn.equals(Isbn.normalize(text(item, "isbn13")))) continue;
+            return new CatalogBook(
+                    isbn,
+                    TextValues.trimToNull(text(item, "bookname")),
+                    firstAuthor(text(item, "authors")),
+                    text(item, "publisher"),
+                    null,
+                    Genres.fromKdc(text(item, "class_no")),
+                    https(text(item, "bookImageURL")),
+                    null,
+                    null,
+                    "data4library");
+        }
+        return null;
+    }
+
+    /** "지은이: 홍길동, 김철수 ; 옮긴이: 번역자"에서 첫 지은이만 남긴다. */
+    private static String firstAuthor(String raw) {
+        if (raw == null) return null;
+        String author = raw.split(";", 2)[0];
+        return TextValues.trimToNull(author.substring(author.indexOf(':') + 1).split(",", 2)[0]);
     }
 
     private CatalogBook kakao(String isbn) {

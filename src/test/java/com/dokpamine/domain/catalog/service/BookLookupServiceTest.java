@@ -26,7 +26,7 @@ class BookLookupServiceTest {
     private static final String ISBN = "9788937460449";
     private final JsonMapper json = JsonMapper.builder().build();
     private final CatalogProperties configured =
-            new CatalogProperties("nlk", "kakao", "google", null, null);
+            new CatalogProperties("nlk", "kakao", "google", null, null, null);
 
     private BookLookupService service(Map<String, String> responses) {
         return new BookLookupService(configured, json, (source, isbn) -> responses.get(source));
@@ -178,7 +178,7 @@ class BookLookupServiceTest {
     void yes24Deadline() throws InterruptedException {
         CountDownLatch cancelled = new CountDownLatch(1);
         BookLookupService service = new BookLookupService(
-                new CatalogProperties(null, "kakao", null, "yes24", null), json, (source, isbn) -> {
+                new CatalogProperties(null, "kakao", null, "yes24", null, null), json, (source, isbn) -> {
                     if (source.equals("kakao")) return """
                             {"documents":[{"isbn":"9788937460449","thumbnail":"https://example.com/cover.jpg"}]}
                             """;
@@ -232,12 +232,27 @@ class BookLookupServiceTest {
     }
 
     @Test
+    @DisplayName("FR-01 정보나루 키가 있으면 국립중앙도서관 다음, 카카오 앞에서 조회한다")
+    void data4libraryOrder() {
+        List<String> calls = new ArrayList<>();
+        new BookLookupService(
+                        new CatalogProperties("nlk", "kakao", "google", null, "d4l", null),
+                        json,
+                        (source, isbn) -> {
+                            calls.add(source);
+                            return null;
+                        })
+                .lookup(ISBN);
+        assertEquals(List.of("nlk", "data4library", "kakao", "google", "openlibrary"), calls);
+    }
+
+    @Test
     @DisplayName("FR-01 키가 없으면 Open Library만 호출하고 잘못된 ISBN은 호출 전에 거절한다")
     void absentKeysAndValidation() {
         List<String> calls = new ArrayList<>();
         BookLookupService service =
                 new BookLookupService(
-                        new CatalogProperties(null, null, null, null, null),
+                        new CatalogProperties(null, null, null, null, null, null),
                         json,
                         (source, isbn) -> {
                             calls.add(source);

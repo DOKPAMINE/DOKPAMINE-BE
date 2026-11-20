@@ -147,17 +147,90 @@ class CatalogApiTest extends ApiTestSupport {
         "마음의 어휘력,국내도서-에세이,818,에세이",
         "큰별쌤 한국사,국내도서-수험서 자격증,911,인문/사회",
     })
-    @DisplayName("FR-01 팀에서 비교한 도서는 YES24 분야를 우선하고 기타는 KDC로 보완한다")
+    @DisplayName("FR-01 팀에서 비교한 도서는 YES24 분야를 우선하고 기타는 정보나루 KDC로 보완한다")
     void teamComparedBooks(String title, String goodsSortNm, String kdc, String genre)
             throws Exception {
         String isbn = "9788937460449";
+        // 실제 국립중앙도서관 응답처럼 KDC는 비어 있고, KDC는 정보나루에서 온다.
         when(fetcher.fetch("nlk", isbn)).thenReturn("""
-                {"docs":[{"EA_ISBN":"%s","TITLE":"%s","KDC":"%s"}]}
-                """.formatted(isbn, title, kdc));
+                {"docs":[{"EA_ISBN":"%s","TITLE":"%s","KDC":""}]}
+                """.formatted(isbn, title));
+        when(fetcher.fetch("data4library", isbn)).thenReturn(data4library(isbn, title, kdc));
         when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, goodsSortNm, 300));
 
         var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
         assertEquals(genre, book.path("genre").asString());
+    }
+
+    @Test
+    @DisplayName("FR-01 YES24 분야가 기타이면 정보나루 KDC로 장르를 보완한다")
+    void data4libraryFillsYes24Other() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("data4library", isbn))
+                .thenReturn(data4library(isbn, "큰별쌤 한국사", "911.0077"));
+        when(fetcher.fetch("yes24", isbn))
+                .thenReturn(yes24(isbn, "국내도서-수험서 자격증", 400));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals("인문/사회", book.path("genre").asString());
+        verify(fetcher).fetch("data4library", isbn);
+    }
+
+    @Test
+    @DisplayName("FR-01 YES24 결과가 없으면 정보나루 KDC와 서지정보로 응답한다")
+    void data4libraryWithoutYes24() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("data4library", isbn)).thenReturn(data4library(isbn, "데미안 ", "813.7"));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals("데미안", book.path("title").asString());
+        assertEquals("헤르만 헤세", book.path("author").asString());
+        assertEquals("민음사", book.path("publisher").asString());
+        assertEquals("소설/시", book.path("genre").asString());
+        assertEquals("https://example.com/d4l.jpg", book.path("coverUrl").asString());
+        assertEquals("data4library", book.path("source").asString());
+    }
+
+    @Test
+    @DisplayName("FR-01 YES24 분야가 있으면 정보나루 KDC와 달라도 YES24 장르를 쓴다")
+    void yes24OverridesData4library() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("data4library", isbn)).thenReturn(data4library(isbn, "도서", "813"));
+        when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-에세이", 200));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals("에세이", book.path("genre").asString());
+    }
+
+    @Test
+    @DisplayName("FR-01 정보나루 오류 응답과 다른 ISBN 응답은 건너뛰고 다음 조회처를 쓴다")
+    void data4libraryErrorFallsBack() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("data4library", isbn))
+                .thenReturn("""
+                        {"response":{"errCode":"authErr","error":"인증정보가 일치하지 않습니다."}}
+                        """);
+        when(fetcher.fetch("kakao", isbn)).thenReturn("""
+                {"documents":[{"isbn":"9788937460449","title":"카카오 도서"}]}
+                """);
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals("카카오 도서", book.path("title").asString());
+        assertEquals("kakao", book.path("source").asString());
+
+        reset(fetcher);
+        when(fetcher.fetch("data4library", isbn))
+                .thenReturn(data4library("9788996991342", "다른 책", "813"));
+        request(get("/api/catalog/isbn/" + isbn), user(), null, 404);
+    }
+
+    private static String data4library(String isbn, String title, String classNo) {
+        return """
+                {"response":{"detail":[{"book":{"bookname":"%s","authors":"지은이: 헤르만 헤세 ;옮긴이: 전영애",
+                "publisher":"민음사","isbn13":"%s","class_no":"%s",
+                "bookImageURL":"http://example.com/d4l.jpg"}}]}}
+                """
+                .formatted(title, isbn, classNo);
     }
 
     private static String yes24(String isbn, String goodsSortNm, int pages) {

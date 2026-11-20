@@ -34,7 +34,7 @@ public class CatalogController {
     @Operation(
             summary = "ISBN 도서 조회",
             description =
-                    "ISBN을 13자리로 정규화하고 국립중앙도서관, 카카오, Google Books, Open Library 순서로 빈 정보를 보완합니다. 키가"
+                    "ISBN을 13자리로 정규화하고 국립중앙도서관, 정보나루, 카카오, Google Books, Open Library 순서로 빈 정보를 보완합니다. 키가"
                             + " 없는 조회처는 건너뛰며 일부 응답 필드는 비어 있을 수 있습니다. YES24 키가 있으면 표지와 분야(장르)를"
                             + " 함께 조회합니다(FR-01).")
     @ApiResponses({
