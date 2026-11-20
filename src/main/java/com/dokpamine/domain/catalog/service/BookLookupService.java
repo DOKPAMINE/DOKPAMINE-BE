@@ -46,7 +46,7 @@ public class BookLookupService {
         if (isbn == null) throw ApiException.badRequest("올바른 ISBN 이 아니에요.");
         if (TextValues.isBlank(properties.yes24ApiKey())) return lookupMetadata(isbn, deadline);
 
-        // 기존 서지 조회의 조기 종료와 관계없이 같은 제한 시간 안에서 표지를 조회한다.
+        // 기존 서지 조회의 조기 종료와 관계없이 같은 제한 시간 안에서 표지·분야를 조회한다.
         FutureTask<CatalogBook> images = new FutureTask<>(() -> yes24(isbn));
         Thread.startVirtualThread(images);
         try {
@@ -112,19 +112,31 @@ public class BookLookupService {
     private static CatalogBook merge(CatalogBook preferred, CatalogBook fallback) {
         if (preferred == null) return fallback;
         if (fallback == null) return preferred;
+        boolean yes24 = fallback.yes24ProductUrl() != null;
         return new CatalogBook(
                 preferred.isbn(),
                 first(preferred.title(), fallback.title()),
                 first(preferred.author(), fallback.author()),
                 first(preferred.publisher(), fallback.publisher()),
                 first(preferred.totalPages(), fallback.totalPages()),
-                first(preferred.genre(), fallback.genre()),
-                fallback.yes24ProductUrl() != null
+                yes24
+                        ? yes24Genre(fallback.genre(), preferred.genre())
+                        : first(preferred.genre(), fallback.genre()),
+                yes24
                         ? first(fallback.coverUrl(), preferred.coverUrl())
                         : first(preferred.coverUrl(), fallback.coverUrl()),
                 first(preferred.sideCoverUrl(), fallback.sideCoverUrl()),
                 first(preferred.yes24ProductUrl(), fallback.yes24ProductUrl()),
                 preferred.source());
+    }
+
+    /**
+     * FR-01: YES24 분야는 자기계발·경제·IT처럼 서점 분류에 가까워 기본으로 우선하고 KDC 등은 보조로 쓴다. YES24가
+     * 기타(수험서·여행 등)이면 정보가 없으므로 기존 장르를 유지한다.
+     */
+    private static String yes24Genre(String yes24, String other) {
+        if (yes24 == null || other == null) return first(yes24, other);
+        return yes24.equals(Genres.OTHER) ? other : yes24;
     }
 
     private static boolean isComplete(CatalogBook book) {
@@ -227,7 +239,7 @@ public class BookLookupService {
         String genre = null;
         for (JsonNode subject : book.path("subjects")) {
             String candidate = Genres.fromCategory(text(subject, "name"));
-            if (candidate != null && !candidate.equals("기타")) {
+            if (candidate != null && !candidate.equals(Genres.OTHER)) {
                 genre = candidate;
                 break;
             }
@@ -260,8 +272,8 @@ public class BookLookupService {
                     text(item, "title"),
                     text(item, "author"),
                     text(item, "publisher"),
-                    null,
-                    null,
+                    positive(item.path("pages").asInt(0)),
+                    Genres.fromYes24(text(item, "goodsSortNm")),
                     httpsUrl(text(item, "cover")),
                     httpsUrl(text(item, "sideCover")),
                     productUrl,

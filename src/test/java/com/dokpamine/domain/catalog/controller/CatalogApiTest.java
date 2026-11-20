@@ -7,6 +7,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.dokpamine.support.ApiTestSupport;
 
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+
+import java.util.List;
 
 class CatalogApiTest extends ApiTestSupport {
     @Test
@@ -69,6 +73,103 @@ class CatalogApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-01 YES24 분야를 앱 장르로 우선 사용하고 비어 있는 쪽수를 채운다")
+    void yes24GenreAndPages() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("nlk", isbn)).thenReturn("""
+                {"docs":[{"EA_ISBN":"9788937460449","TITLE":"도서","KDC":"325.04"}]}
+                """);
+        when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-자기계발", 736));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals("자기계발", book.path("genre").asString());
+        assertEquals(736, book.path("totalPages").asInt());
+        assertEquals("nlk", book.path("source").asString());
+    }
+
+    @Test
+    @DisplayName("FR-01 기존 조회처의 쪽수가 있으면 YES24 쪽수로 바꾸지 않는다")
+    void yes24PagesFillOnlyBlank() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("nlk", isbn)).thenReturn("""
+                {"docs":[{"EA_ISBN":"9788937460449","TITLE":"도서","PAGE":"312 p.","KDC":"813.7"}]}
+                """);
+        when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-소설/시/희곡", 239));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals(312, book.path("totalPages").asInt());
+        assertEquals("소설/시", book.path("genre").asString());
+    }
+
+    @Test
+    @DisplayName("FR-01 YES24 소설/시/희곡 분야의 시집은 소설/시로 정한다")
+    void yes24NovelKeepsPoetry() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("nlk", isbn)).thenReturn("""
+                {"docs":[{"EA_ISBN":"9788937460449","TITLE":"시집","KDC":"811.6"}]}
+                """);
+        when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-소설/시/희곡", 120));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals("소설/시", book.path("genre").asString());
+    }
+
+    @Test
+    @DisplayName("FR-01 YES24 분야가 기타이면 기존 조회처의 장르를 유지한다")
+    void yes24OtherKeepsMetadataGenre() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("nlk", isbn)).thenReturn("""
+                {"docs":[{"EA_ISBN":"9788937460449","TITLE":"평전","KDC":"991.1"}]}
+                """);
+        when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-인물", 400));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals("인문/사회", book.path("genre").asString());
+    }
+
+    @Test
+    @DisplayName("FR-01 YES24만 일치하면 YES24 분야로 장르를 채운다")
+    void yes24OnlyGenre() throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, "국내도서-IT 모바일", 584));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals("과학/IT", book.path("genre").asString());
+        assertEquals(584, book.path("totalPages").asInt());
+        assertEquals("yes24", book.path("source").asString());
+    }
+
+    @ParameterizedTest(name = "{0}: YES24 {1}, KDC {2} → {3}")
+    @CsvSource({
+        "'데미안, 싯다르타',국내도서-소설/시/희곡,853,소설/시",
+        "모순,국내도서-소설/시/희곡,813.62,소설/시",
+        "쇼펜하우어 인생수업,국내도서-인문,165.47,인문/사회",
+        "마음의 어휘력,국내도서-에세이,818,에세이",
+        "큰별쌤 한국사,국내도서-수험서 자격증,911,인문/사회",
+    })
+    @DisplayName("FR-01 팀에서 비교한 도서는 YES24 분야를 우선하고 기타는 KDC로 보완한다")
+    void teamComparedBooks(String title, String goodsSortNm, String kdc, String genre)
+            throws Exception {
+        String isbn = "9788937460449";
+        when(fetcher.fetch("nlk", isbn)).thenReturn("""
+                {"docs":[{"EA_ISBN":"%s","TITLE":"%s","KDC":"%s"}]}
+                """.formatted(isbn, title, kdc));
+        when(fetcher.fetch("yes24", isbn)).thenReturn(yes24(isbn, goodsSortNm, 300));
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertEquals(genre, book.path("genre").asString());
+    }
+
+    private static String yes24(String isbn, String goodsSortNm, int pages) {
+        return """
+                {"success":true,"data":{"items":[{"isbn13":"%s","title":"도서","goodsType":"도서",
+                "goodsSortNm":"%s","pages":%d,"cover":"https://image.yes24.com/goods/2/L",
+                "link":"https://www.yes24.com/product/goods/2"}]}}
+                """
+                .formatted(isbn, goodsSortNm, pages);
+    }
+
+    @Test
     @DisplayName("FR-01 YES24 조회가 실패해도 기존 표지로 응답한다")
     void yes24Failure() throws Exception {
         String isbn = "9788937460449";
@@ -100,11 +201,11 @@ class CatalogApiTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("FR-01 장르 목록은 기존 열두 장르를 유지한다")
+    @DisplayName("FR-01 장르 목록은 YES24 대분야에 맞춘 아홉 장르다")
     void genres() throws Exception {
         var genres = request(get("/api/catalog/genres"), user(), null, 200);
-        assertEquals(12, genres.size());
-        assertEquals("소설", genres.path(0).asString());
-        assertEquals("기타", genres.path(11).asString());
+        assertEquals(
+                List.of("소설/시", "에세이", "인문/사회", "경제/경영", "자기계발", "과학/IT", "예술", "만화", "기타"),
+                json.convertValue(genres, List.class));
     }
 }

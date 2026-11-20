@@ -35,7 +35,8 @@ public class CatalogController {
             summary = "ISBN 도서 조회",
             description =
                     "ISBN을 13자리로 정규화하고 국립중앙도서관, 카카오, Google Books, Open Library 순서로 빈 정보를 보완합니다. 키가"
-                            + " 없는 조회처는 건너뛰며 일부 응답 필드는 비어 있을 수 있습니다(FR-01).")
+                            + " 없는 조회처는 건너뛰며 일부 응답 필드는 비어 있을 수 있습니다. YES24 키가 있으면 표지와 분야(장르)를"
+                            + " 함께 조회합니다(FR-01).")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "조회된 도서 정보와 첫 번째 유효 조회처"),
         @ApiResponse(
@@ -66,7 +67,7 @@ public class CatalogController {
     }
 
     @GetMapping("/genres")
-    @Operation(summary = "지원 장르 목록 조회", description = "앱에서 선택하고 독서 통계에 사용하는 열두 장르를 반환합니다.")
+    @Operation(summary = "지원 장르 목록 조회", description = "앱에서 선택하고 독서 통계에 사용하는 아홉 장르를 반환합니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "지원하는 장르 이름 목록"),
         @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음", content = @Content)
