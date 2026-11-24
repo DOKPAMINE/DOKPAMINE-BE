@@ -31,6 +31,9 @@ public class Review {
     @Column(name = "published_at")
     private Instant publishedAt;
 
+    @Column(name = "body_written_at")
+    private Instant bodyWrittenAt;
+
     private boolean deleted;
 
     @Column(name = "created_at")
@@ -114,6 +117,14 @@ public class Review {
 
     public void setPublishedAt(Instant publishedAt) {
         this.publishedAt = publishedAt;
+    }
+
+    public Instant getBodyWrittenAt() {
+        return bodyWrittenAt;
+    }
+
+    public void setBodyWrittenAt(Instant bodyWrittenAt) {
+        this.bodyWrittenAt = bodyWrittenAt;
     }
 
     public boolean getDeleted() {
