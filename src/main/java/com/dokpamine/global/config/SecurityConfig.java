@@ -42,6 +42,9 @@ public class SecurityConfig {
                                 .permitAll()
                                 .requestMatchers("/actuator/health", "/h2-console/**")
                                 .permitAll()
+                                // 토큰 없는 가입·로그인의 오류가 /error로 넘어가도 원래 상태 코드를 401로 가리지 않게 한다.
+                                .requestMatchers("/error")
+                                .permitAll()
                                 .requestMatchers(
                                         HttpMethod.GET,
                                         "/swagger-ui.html",
