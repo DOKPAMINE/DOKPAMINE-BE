@@ -57,6 +57,7 @@ public class FeedItemMapper {
             result.add(
                     new FeedItem(
                             review.getId(),
+                            review.getBookId(),
                             author.getNickname(),
                             book.getTitle(),
                             book.getAuthor(),
@@ -64,6 +65,7 @@ public class FeedItemMapper {
                             review.getOneLine(),
                             review.getBody(),
                             review.getPublishedAt(),
+                            review.getBodyWrittenAt(),
                             counts.getOrDefault(review.getId(), 0L),
                             liked.contains(review.getId()),
                             review.getUserId().equals(me)));
