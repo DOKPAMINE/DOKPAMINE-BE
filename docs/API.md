@@ -8,6 +8,11 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 - ID: 클라이언트가 만든 UUID (오프라인 우선, 아래 "동기화 규칙" 참고)
 - 오류: `{ "code": "VALIDATION_FAILED", "message": "사용자에게 보여줄 한국어 문장" }`
 - 요청 본문 Bean Validation 실패는 HTTP 400 `VALIDATION_FAILED`와 한국어 존댓말 한 문장을 반환한다. `Accept-Language`와 관계없이 한국어로 안내하며, 내부 필드명이나 영어 기본 검증 메시지를 노출하지 않는다. 여러 제약 위반 시 메시지 문자열의 사전순으로 첫 문장만 반환한다.
+- Bean Validation 이전 단계의 형식 오류도 같은 `{code, message}` 본문으로 응답한다.
+  - 읽을 수 없는 JSON이나 형식이 맞지 않는 필드 값(예: `"deleted": null`, `"visibility": null`, 숫자 자리의 문자열): 400 `BAD_REQUEST`, `요청 형식을 확인해 주세요.`
+  - 경로·쿼리 값의 형식 오류(예: UUID 자리의 `not-a-uuid`, `weekStart=bad`): 400 `BAD_REQUEST`, `요청 값의 형식을 확인해 주세요.`
+  - 없는 경로: 404 `NOT_FOUND`, `요청한 주소를 찾을 수 없어요.` 토큰 없이 호출하면 기존처럼 401이다.
+  - 이전에는 Spring 기본 본문(`{timestamp, status, error, path}`)이었다. 상태 코드는 같다. 앱은 이미 `code`·`message`를 읽으므로 앱 수정은 필요 없다.
 - 회원가입·로그인처럼 토큰 없이 호출하는 요청에서 오류가 나도 원래 상태 코드(400, 415 등)로 응답한다. 이전에는 오류 전달 경로(`/error`)가 인증을 요구해 401로 바뀌었다.
 - **AOS 영향 있음:** 검증 오류 `message`에서 기존 `필드명: 메시지` 형식과 여러 오류의 쉼표 연결이 사라진다. 앱은 `code`로 오류를 구분하고 `message`는 안내용으로 표시한다. 엔드포인트·DTO 필드·상태 코드는 동일하다.
 
