@@ -35,13 +35,40 @@ public class FeedController {
     @Operation(
             summary = "공개 감상 피드 조회",
             description =
-                    "삭제되지 않은 공개 감상을 최신순으로 조회합니다. 최신 감상 최대 100건 중 유효한 책에 연결된 항목을 반환합니다(FR-08).")
+                    "사람의 책 하나를 박스 하나로 묶어 조회합니다. 공개 독후감이 있는 책만 포함하며, 박스마다 가장 최근에 새로 쓴 공개 독후감 한 건을 독후감을 쓴 시각 최신순으로 최대 100개 반환합니다(FR-08).")
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "공개 감상 목록. 없으면 빈 배열"),
+        @ApiResponse(responseCode = "200", description = "박스별 대표 독후감 목록. 없으면 빈 배열"),
         @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음", content = @Content)
     })
     public List<FeedItem> list(@Parameter(hidden = true) Authentication auth) {
         return service.list(AuthenticatedUser.id(auth));
+    }
+
+    @GetMapping("/user-books/{id}")
+    @Operation(
+            summary = "책 박스의 공개 감상 조회",
+            description =
+                    "한 사람이 한 책에 쓴 공개 감상(한줄평·독후감)을 모두 조회합니다. 공개 감상이 없거나 책이 삭제됐으면 404로 처리합니다(FR-08, NFR-09).")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "공개 감상 목록(공개 시각 최신순)"),
+        @ApiResponse(responseCode = "400", description = "잘못된 책 UUID", content = @Content),
+        @ApiResponse(responseCode = "401", description = "인증 토큰이 없거나 유효하지 않음", content = @Content),
+        @ApiResponse(
+                responseCode = "404",
+                description = "책 없음, 삭제됨 또는 공개 감상 없음",
+                content =
+                        @Content(
+                                mediaType = "application/json",
+                                schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    public List<FeedItem> bookReviews(
+            @Parameter(hidden = true) Authentication auth,
+            @Parameter(
+                            description = "조회할 사람의 책(user_books) UUID. 피드 항목의 userBookId",
+                            example = "5b1f0c3e-2a7d-4c1b-9f43-8d2e6a7b9c10")
+                    @PathVariable
+                    UUID id) {
+        return service.bookReviews(AuthenticatedUser.id(auth), id);
     }
 
     @GetMapping("/{id}")

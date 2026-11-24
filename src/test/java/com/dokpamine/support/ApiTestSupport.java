@@ -118,7 +118,7 @@ public abstract class ApiTestSupport {
     }
 
     protected Review review(User user, UserBook book, Visibility visibility, Instant published) {
-        return reviews.save(
+        Review review =
                 new Review(
                         UUID.randomUUID(),
                         user.getId(),
@@ -129,7 +129,10 @@ public abstract class ApiTestSupport {
                         published,
                         false,
                         MONDAY,
-                        MONDAY));
+                        MONDAY);
+        // 독후감이 있는 감상이므로 라운지 박스 정렬 시각도 공개 시각과 같게 둔다.
+        review.setBodyWrittenAt(published != null ? published : MONDAY);
+        return reviews.save(review);
     }
 
     protected JsonNode request(

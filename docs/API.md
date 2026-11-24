@@ -116,7 +116,8 @@ QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, 
 
 | Method | Path | 응답 |
 |---|---|---|
-| GET | `/api/feed` | `FeedItem[]` (공개 감상 최신순 100개) |
+| GET | `/api/feed` | `FeedItem[]` (사람의 책 박스별 대표 독후감, 최대 100개) |
+| GET | `/api/feed/user-books/{userBookId}` | `FeedItem[]` (그 책의 공개 감상 전부) |
 | GET | `/api/feed/books?query=데미안` | `BookReviewGroup[]` (책 이름 검색, 묶음별 공개 감상 최신순) |
 | GET | `/api/feed/{reviewId}` | `FeedItem` |
 | POST | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: true}` (중복 요청해도 1회) |
@@ -124,8 +125,25 @@ QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, 
 
 감상 상세·좋아요 등록·취소는 감상이 없거나 삭제됐거나 연결된 책이 삭제됐으면 작성자에게도 404를 반환한다. 다른 사용자의 비공개 감상도 404를 반환한다.
 
-`FeedItem = {id, nickname, bookTitle, bookAuthor, genre, oneLine?, body?, publishedAt?, likeCount, likedByMe, mine}`.
+`FeedItem = {id, userBookId, nickname, bookTitle, bookAuthor, genre, oneLine?, body?, publishedAt?, bodyWrittenAt?, likeCount, likedByMe, mine}`.
 공개 응답에는 닉네임, 책 제목·저자, 감상만 담는다. 독서 시간, 사진, 보관 위치는 노출하지 않는다.
+`userBookId`는 감상이 연결된 사람의 책(`user_books`) UUID다. `bodyWrittenAt`은 그 감상에 독후감(`body`)이 **처음** 채워진 서버 시각이며, 독후감이 없던 적만 있으면 `null`이다.
+
+### 라운지 박스 (FR-08, S-70, S-72)
+
+`GET /api/feed`는 사람의 책 하나를 박스 하나로 본다. **AOS 영향 있음**: 기존 필드는 그대로이고 `userBookId`, `bodyWrittenAt`만 늘었으므로 구버전 앱은 박스 대표 독후감 목록으로 계속 표시된다.
+
+- 공개이고 삭제되지 않았으며 독후감(`body`)이 있는 감상이 하나라도 있는 책만 박스가 된다. 한줄평만 있는 책은 제외하며, 책별 감상 검색(`/api/feed/books`)에서는 그대로 나온다. 삭제된 책은 제외한다.
+- 박스마다 공개 독후감 중 `bodyWrittenAt`이 가장 늦은 감상 한 건을 반환한다. 박스 순서도 그 시각 내림차순이며, 동점은 감상 UUID 문자열 오름차순이다. 최대 100개 박스를 반환한다.
+- `bodyWrittenAt`은 감상 PUT에서 독후감이 비어 있다가 처음 채워질 때 서버 시각으로 한 번만 기록한다. 한줄평 쓰기·수정, 독후감 수정, 독후감을 지웠다가 다시 쓰기, 공개 전환으로는 바뀌지 않는다. 한줄평만 있던 감상에 독후감을 더하면 그때 새로 쓴 것으로 본다.
+- 비공개로 쓴 독후감을 나중에 공개로 바꾸면 박스는 맨 위로 올라오지 않고 원래 쓴 시각 위치에 들어간다.
+- 마이그레이션 전 독후감의 `bodyWrittenAt`은 감상의 `createdAt`으로 채웠다.
+
+`GET /api/feed/user-books/{userBookId}`는 박스를 눌렀을 때 쓰는 API다.
+
+- 그 책에 연결된 공개이고 삭제되지 않은 감상(한줄평만 있는 감상 포함)을 모두 반환한다. 작성자 본인이 요청해도 비공개 감상은 포함하지 않는다.
+- 순서는 `publishedAt` 내림차순(시각이 없으면 마지막), 동점은 감상 UUID 문자열 오름차순이다. 좋아요는 감상마다 `likeCount`, `likedByMe`로 준다.
+- 책이 없거나 삭제됐거나 공개 감상이 없으면 `404 NOT_FOUND`다(NFR-09). UUID 형식이 아니면 `400`이다.
 
 ### 책별 공개 감상 검색 (FR-16, NFR-09)
 

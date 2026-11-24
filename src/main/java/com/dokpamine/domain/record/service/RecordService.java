@@ -221,6 +221,8 @@ public class RecordService {
         review.setBookId(dto.bookId());
         review.setOneLine(oneLine);
         review.setBody(body);
+        // FR-08 라운지 박스 순서는 독후감을 처음 쓴 서버 시각이다. 수정이나 지웠다 다시 쓰기로는 바꾸지 않는다.
+        if (body != null && review.getBodyWrittenAt() == null) review.setBodyWrittenAt(Instant.now());
         if (dto.visibility() == Visibility.PUBLIC && review.getVisibility() != Visibility.PUBLIC)
             review.setPublishedAt(Instant.now());
         if (dto.visibility() == Visibility.PRIVATE) review.setPublishedAt(null);

@@ -35,6 +35,7 @@ class SwaggerApiTest extends ApiTestSupport {
                     Map.entry("/api/feed/{id}", List.of("get")),
                     Map.entry("/api/feed/{id}/like", List.of("post", "delete")),
                     Map.entry("/api/feed/books", List.of("get")),
+                    Map.entry("/api/feed/user-books/{id}", List.of("get")),
                     Map.entry("/api/ranking/weekly", List.of("get")));
     private static final Set<String> PUBLIC_PATHS = Set.of("/api/auth/signup", "/api/auth/login");
     private static final Pattern KOREAN = Pattern.compile("[가-힣]");
@@ -75,7 +76,7 @@ class SwaggerApiTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("FR-01 FR-08 FR-10 FR-15 생성 명세에 기존 API 17개와 한국어 설명이 포함된다")
+    @DisplayName("FR-01 FR-08 FR-10 FR-15 생성 명세에 기존 API 18개와 한국어 설명이 포함된다")
     void allBusinessOperationsHaveDescriptions() throws Exception {
         JsonNode paths = apiDocs().path("paths");
         int documented = 0;
@@ -89,7 +90,7 @@ class SwaggerApiTest extends ApiTestSupport {
                 documented++;
             }
         }
-        assertEquals(17, documented);
+        assertEquals(18, documented);
     }
 
     @Test

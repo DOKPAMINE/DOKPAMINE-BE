@@ -180,6 +180,7 @@ class FeedApiTest extends ApiTestSupport {
         assertEquals(
                 Set.of(
                         "id",
+                        "userBookId",
                         "nickname",
                         "bookTitle",
                         "bookAuthor",
@@ -187,6 +188,7 @@ class FeedApiTest extends ApiTestSupport {
                         "oneLine",
                         "body",
                         "publishedAt",
+                        "bodyWrittenAt",
                         "likeCount",
                         "likedByMe",
                         "mine"),

@@ -10,7 +10,6 @@ import com.dokpamine.domain.record.entity.Visibility;
 import com.dokpamine.domain.record.repository.ReviewRepository;
 import com.dokpamine.global.apiPayload.exception.ApiException;
 
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,9 +28,21 @@ public class FeedService {
         this.items = items;
     }
 
+    /** FR-08 사람의 책 하나를 박스 하나로 보고, 박스마다 대표 독후감을 최대 100개 반환한다. */
     public List<FeedItem> list(UUID me) {
-        return items.toItems(
-                reviews.findFeedReviews(Visibility.PUBLIC, PageRequest.of(0, 100)), me);
+        List<UUID> ids = reviews.findFeedBoxReviewIds(100).stream().map(UUID::fromString).toList();
+        Map<UUID, Review> found = new HashMap<>();
+        reviews.findAllById(ids).forEach(review -> found.put(review.getId(), review));
+        return items.toItems(ids.stream().map(found::get).filter(Objects::nonNull).toList(), me);
+    }
+
+    /** FR-08 박스를 누르면 그 사람이 그 책에 쓴 공개 감상 전부를 보여 준다. */
+    public List<FeedItem> bookReviews(UUID me, UUID userBookId) {
+        List<FeedItem> mapped =
+                items.toItems(reviews.findPublicBookReviews(userBookId, Visibility.PUBLIC), me);
+        // NFR-09 공개 감상이 없으면 책이 있는지도 드러내지 않는다.
+        if (mapped.isEmpty()) throw ApiException.notFound("감상");
+        return mapped;
     }
 
     public FeedItem detail(UUID me, UUID id) {
