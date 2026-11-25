@@ -43,7 +43,7 @@ public class BookLookupService {
     CatalogBook lookup(String rawIsbn, Duration timeout) {
         long deadline = System.nanoTime() + timeout.toNanos();
         String isbn = Isbn.normalize(rawIsbn);
-        if (isbn == null) throw ApiException.badRequest("올바른 ISBN 이 아니에요.");
+        if (isbn == null) throw ApiException.badRequest("올바른 ISBN이 아니에요.");
         if (TextValues.isBlank(properties.yes24ApiKey())) return lookupMetadata(isbn, deadline);
 
         // 기존 서지 조회의 조기 종료와 관계없이 같은 제한 시간 안에서 표지·분야를 조회한다.

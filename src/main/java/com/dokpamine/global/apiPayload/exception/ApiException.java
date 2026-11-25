@@ -21,7 +21,14 @@ public class ApiException extends RuntimeException {
     }
 
     public static ApiException notFound(String what) {
-        return new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", what + " 을(를) 찾을 수 없어요.");
+        return new ApiException(HttpStatus.NOT_FOUND, "NOT_FOUND", what + objectParticle(what) + " 찾을 수 없어요.");
+    }
+
+    // 앱이 메시지를 그대로 보여 주므로 "감상 을(를)" 대신 받침에 맞는 조사를 붙인다.
+    static String objectParticle(String word) {
+        char last = word.isEmpty() ? ' ' : word.charAt(word.length() - 1);
+        if (last < '가' || last > '힣') return "을(를)";
+        return (last - '가') % 28 == 0 ? "를" : "을";
     }
 
     public static ApiException forbidden() {
