@@ -2,14 +2,25 @@ package com.dokpamine.domain.catalog.client;
 
 import com.dokpamine.global.config.CatalogProperties;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.net.URI;
 import java.net.http.HttpClient;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.regex.Pattern;
 
 @Component
 public class HttpCatalogFetcher implements CatalogFetcher {
+    private static final Pattern YES24_SIDE_COVER_PATH = Pattern.compile("/goods/[0-9]+/SIDE/[A-Z]+");
+    private static final int YES24_PLACEHOLDER_SIZE = 2858;
+    private static final String YES24_PLACEHOLDER_SHA256 =
+            "8ce49c510667331380923946071031f929a28b028fe337d095861f6d840d0a6e";
+
     private final CatalogProperties properties;
     private final RestClient http;
 
@@ -69,5 +80,36 @@ public class HttpCatalogFetcher implements CatalogFetcher {
                     default -> throw new IllegalArgumentException("지원하지 않는 도서 조회처입니다.");
                 };
         return request.retrieve().body(String.class);
+    }
+
+    @Override
+    public boolean isYes24SideCoverPlaceholder(String url) {
+        URI uri = URI.create(url);
+        if (!"https".equalsIgnoreCase(uri.getScheme())
+                || !"image.yes24.com".equalsIgnoreCase(uri.getHost())
+                || uri.getPort() != -1
+                || uri.getRawUserInfo() != null
+                || !YES24_SIDE_COVER_PATH.matcher(uri.getRawPath()).matches()) {
+            return false;
+        }
+
+        // 미등록 책등도 같은 상품별 URL에서 200을 반환하고 ETag가 없을 수 있다.
+        // 한 바이트 더 요청해 실제 이미지의 앞부분만 대체 이미지로 오인하지 않는다.
+        return http.get()
+                .uri("https://image.yes24.com" + uri.getRawPath())
+                .header(HttpHeaders.RANGE, "bytes=0-" + YES24_PLACEHOLDER_SIZE)
+                .exchange((request, response) -> {
+                    if (!response.getStatusCode().is2xxSuccessful()
+                            || response.getHeaders().getContentLength() != YES24_PLACEHOLDER_SIZE) {
+                        return false;
+                    }
+                    byte[] image = response.getBody().readNBytes(YES24_PLACEHOLDER_SIZE);
+                    try {
+                        byte[] digest = MessageDigest.getInstance("SHA-256").digest(image);
+                        return YES24_PLACEHOLDER_SHA256.equals(HexFormat.of().formatHex(digest));
+                    } catch (NoSuchAlgorithmException e) {
+                        throw new IllegalStateException(e);
+                    }
+                });
     }
 }

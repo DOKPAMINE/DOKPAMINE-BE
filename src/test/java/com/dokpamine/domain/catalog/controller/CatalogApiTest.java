@@ -59,6 +59,25 @@ class CatalogApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-01 YES24 책등이 대체 이미지면 앞표지와 상품 링크를 유지하고 책등 주소를 비운다")
+    void yes24PlaceholderSideCover() throws Exception {
+        String isbn = "9788994492032";
+        String sideCover = "https://image.yes24.com/goods/24259565/SIDE/L";
+        when(fetcher.fetch("yes24", isbn)).thenReturn("""
+                {"success":true,"data":{"items":[{"isbn13":"9788994492032","title":"도서",
+                "cover":"https://image.yes24.com/goods/24259565/L",
+                "sideCover":"https://image.yes24.com/goods/24259565/SIDE/L",
+                "link":"https://www.yes24.com/product/goods/24259565"}]}}
+                """);
+        when(fetcher.isYes24SideCoverPlaceholder(sideCover)).thenReturn(true);
+
+        var book = request(get("/api/catalog/isbn/" + isbn), user(), null, 200);
+        assertTrue(book.path("sideCoverUrl").isNull());
+        assertEquals("https://image.yes24.com/goods/24259565/L", book.path("coverUrl").asString());
+        assertEquals("https://www.yes24.com/product/goods/24259565", book.path("yes24ProductUrl").asString());
+    }
+
+    @Test
     @DisplayName("FR-01 YES24만 일치하는 책을 찾으면 그 상품으로 ISBN 조회를 성공시킨다")
     void yes24Only() throws Exception {
         when(fetcher.fetch("yes24", "9788937460449")).thenReturn("""

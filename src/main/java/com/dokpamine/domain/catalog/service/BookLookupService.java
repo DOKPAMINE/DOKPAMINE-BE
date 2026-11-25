@@ -26,6 +26,7 @@ public class BookLookupService {
     private static final Logger log = LoggerFactory.getLogger(BookLookupService.class);
     // FR-01: 앱의 요청 제한 시간(10초)보다 충분히 짧게 둔다.
     private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(6);
+    private static final Duration YES24_SIDE_COVER_TIMEOUT = Duration.ofSeconds(1);
     // 앞 조회처가 이 시간 안에 응답하지 않으면 다음 조회처를 미리 시작한다. 평소처럼 빨리 응답하면 순서대로만 부른다.
     private static final Duration HEDGE_DELAY = Duration.ofSeconds(1);
     private static final Duration CACHE_TTL = Duration.ofDays(1);
@@ -110,8 +111,8 @@ public class BookLookupService {
                 return metadata;
             }
             try {
-                return merge(
-                        metadata, await("yes24", images, deadline - System.nanoTime(), attempt));
+                CatalogBook yes24 = await("yes24", images, deadline - System.nanoTime(), attempt);
+                return merge(metadata, withoutYes24Placeholder(yes24, deadline, attempt));
             } catch (TimeoutException e) {
                 attempt.degraded = true;
                 return metadata;
@@ -122,6 +123,36 @@ public class BookLookupService {
             }
         } finally {
             images.cancel(true);
+        }
+    }
+
+    private CatalogBook withoutYes24Placeholder(CatalogBook book, long deadline, Attempt attempt) {
+        if (book == null || book.sideCoverUrl() == null) return book;
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) {
+            attempt.degraded = true;
+            return book;
+        }
+
+        FutureTask<Boolean> check = new FutureTask<>(
+                () -> fetcher.isYes24SideCoverPlaceholder(book.sideCoverUrl()));
+        Thread.startVirtualThread(check);
+        try {
+            Boolean placeholder = await(
+                    "yes24 책등", check, Math.min(remaining, YES24_SIDE_COVER_TIMEOUT.toNanos()), attempt);
+            if (!Boolean.TRUE.equals(placeholder)) return book;
+            return new CatalogBook(
+                    book.isbn(), book.title(), book.author(), book.publisher(), book.totalPages(),
+                    book.genre(), book.coverUrl(), null, book.yes24ProductUrl(), book.source());
+        } catch (TimeoutException e) {
+            attempt.degraded = true;
+            return book;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            attempt.degraded = true;
+            return book;
+        } finally {
+            check.cancel(true);
         }
     }
 
@@ -212,8 +243,8 @@ public class BookLookupService {
         return merged;
     }
 
-    private static CatalogBook await(
-            String source, FutureTask<CatalogBook> task, long timeoutNanos, Attempt attempt)
+    private static <T> T await(
+            String source, FutureTask<T> task, long timeoutNanos, Attempt attempt)
             throws InterruptedException, TimeoutException {
         try {
             return task.get(Math.max(timeoutNanos, 0), TimeUnit.NANOSECONDS);
