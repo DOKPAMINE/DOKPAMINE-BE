@@ -9,6 +9,7 @@ public record FeedItem(
         String nickname,
         String bookTitle,
         String bookAuthor,
+        String coverUrl,
         String genre,
         String oneLine,
         String body,

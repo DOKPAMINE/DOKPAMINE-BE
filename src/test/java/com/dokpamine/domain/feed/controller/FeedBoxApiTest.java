@@ -41,6 +41,22 @@ class FeedBoxApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-08 라운지 박스와 감상 목록에 연결된 책의 표지 주소를 반환한다")
+    void includesBookCoverInFeedAndBookReviews() throws Exception {
+        User owner = user(), reader = user();
+        UserBook book = book(owner);
+        String coverUrl = "https://example.com/cover.jpg";
+        book.setCoverUrl(coverUrl);
+        write(owner, UUID.randomUUID(), book, null, "공개 독후감", Visibility.PUBLIC, null);
+        em.flush();
+        em.clear();
+
+        assertEquals(coverUrl, feed(reader).getFirst().path("coverUrl").asString());
+        JsonNode reviews = request(get("/api/feed/user-books/" + book.getId()), reader, null, 200);
+        assertEquals(coverUrl, reviews.path(0).path("coverUrl").asString());
+    }
+
+    @Test
     @DisplayName("FR-08 FR-16 한줄평만 공개된 책은 라운지 박스로 뜨지 않고 책별 감상 검색에는 나온다")
     void oneLineOnlyBookIsSearchableButNotBoxed() throws Exception {
         User owner = user(), reader = user();
