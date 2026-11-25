@@ -36,6 +36,8 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 
 `TokenResponse = {accessToken, expiresAt, user: MeResponse}`, `MeResponse = {id, email, nickname, rankingOptIn}`. 토큰 유효기간은 14일이고 리프레시 토큰은 없다(만료되면 재로그인).
 
+서명과 만료가 정상이어도 토큰의 사용자가 DB에 없으면(DB 초기화·교체) 인증이 필요한 모든 API가 401이다. 이전에는 `/api/me`가 404, 기록 PUT이 500이었다. **AOS 영향 있음(앱 수정 불필요):** 앱은 토큰을 보낸 요청의 401에서 이미 로그아웃하고 재로그인을 안내한다.
+
 ## 도서 조회 (FR-01)
 
 | Method | Path | 응답 |
