@@ -219,6 +219,8 @@ class CatalogApiTest extends ApiTestSupport {
         assertEquals("kakao", book.path("source").asString());
 
         reset(fetcher);
+        // 같은 ISBN에 다른 외부 응답을 주므로 앞 조회에서 보관한 결과를 비운다.
+        lookups.clearCache();
         when(fetcher.fetch("data4library", isbn))
                 .thenReturn(data4library("9788996991342", "다른 책", "813"));
         request(get("/api/catalog/isbn/" + isbn), user(), null, 404);

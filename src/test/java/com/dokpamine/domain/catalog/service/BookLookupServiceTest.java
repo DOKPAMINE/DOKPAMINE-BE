@@ -269,6 +269,108 @@ class BookLookupServiceTest {
     }
 
     @Test
+    @DisplayName("FR-01 앞 조회처가 1초 안에 응답하지 않으면 다음 조회처를 미리 시작해 그 결과를 돌려준다")
+    void slowSourceStartsNextEarly() throws InterruptedException {
+        List<String> calls = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch cancelled = new CountDownLatch(1);
+        BookLookupService service =
+                new BookLookupService(
+                        configured,
+                        json,
+                        (source, isbn) -> {
+                            calls.add(source);
+                            if (source.equals("nlk")) {
+                                try {
+                                    Thread.sleep(Duration.ofSeconds(10));
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    cancelled.countDown();
+                                }
+                                return null;
+                            }
+                            if (source.equals("kakao"))
+                                return """
+                                        {"documents":[{"isbn":"9788937460449","title":"카카오 도서","thumbnail":"https://example.com/kakao.jpg"}]}
+                                        """;
+                            return null;
+                        });
+
+        long started = System.nanoTime();
+        // 예전에는 국립중앙도서관을 제한 시간까지 기다린 뒤 아무것도 돌려주지 못했다.
+        CatalogBook book =
+                assertTimeoutPreemptively(
+                        Duration.ofSeconds(4), () -> service.lookup(ISBN, Duration.ofMillis(2500)));
+
+        assertNotNull(book);
+        assertEquals("카카오 도서", book.title());
+        assertEquals("kakao", book.source());
+        assertTrue(Duration.ofNanos(System.nanoTime() - started).compareTo(Duration.ofSeconds(3)) < 0);
+        assertEquals(List.of("nlk", "kakao", "google"), calls.subList(0, 3));
+        assertTrue(cancelled.await(1, TimeUnit.SECONDS));
+    }
+
+    @Test
+    @DisplayName("FR-01 모든 조회처가 정상으로 끝난 결과는 보관해 같은 ISBN을 다시 조회하지 않는다")
+    void cachesSettledResult() {
+        List<String> calls = new ArrayList<>();
+        Map<String, String> responses = Map.of("nlk", nlk("312 p."));
+        BookLookupService service =
+                new BookLookupService(
+                        configured,
+                        json,
+                        (source, isbn) -> {
+                            calls.add(source);
+                            return responses.get(source);
+                        });
+
+        CatalogBook first = service.lookup(ISBN);
+        int firstCalls = calls.size();
+        CatalogBook again = service.lookup("8937460440");
+
+        assertEquals(first, again);
+        assertEquals(firstCalls, calls.size());
+        service.clearCache();
+        service.lookup(ISBN);
+        assertEquals(firstCalls * 2, calls.size());
+    }
+
+    @Test
+    @DisplayName("FR-01 조회처 오류나 404 결과는 보관하지 않고 다음에 다시 조회한다")
+    void doesNotCacheDegradedOrMissingResult() {
+        List<String> calls = new ArrayList<>();
+        BookLookupService failing =
+                new BookLookupService(
+                        configured,
+                        json,
+                        (source, isbn) -> {
+                            calls.add(source);
+                            if (source.equals("nlk")) throw new IllegalStateException("일시 오류");
+                            return source.equals("kakao")
+                                    ? """
+                                      {"documents":[{"isbn":"9788937460449","title":"카카오 도서"}]}
+                                      """
+                                    : null;
+                        });
+        assertNotNull(failing.lookup(ISBN));
+        int firstCalls = calls.size();
+        assertNotNull(failing.lookup(ISBN));
+        assertEquals(firstCalls * 2, calls.size());
+
+        calls.clear();
+        BookLookupService missing =
+                new BookLookupService(
+                        configured,
+                        json,
+                        (source, isbn) -> {
+                            calls.add(source);
+                            return null;
+                        });
+        assertNull(missing.lookup(ISBN));
+        assertNull(missing.lookup(ISBN));
+        assertEquals(8, calls.size());
+    }
+
+    @Test
     @DisplayName("FR-01 외부 조회 오류에 포함된 인증키를 로그에 남기지 않는다")
     void safeLogs(CapturedOutput output) {
         BookLookupService service =

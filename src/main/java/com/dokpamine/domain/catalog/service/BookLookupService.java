@@ -24,10 +24,30 @@ import java.util.regex.*;
 @Service
 public class BookLookupService {
     private static final Logger log = LoggerFactory.getLogger(BookLookupService.class);
-    private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(8);
+    // FR-01: 앱의 요청 제한 시간(10초)보다 충분히 짧게 둔다.
+    private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(6);
+    // 앞 조회처가 이 시간 안에 응답하지 않으면 다음 조회처를 미리 시작한다. 평소처럼 빨리 응답하면 순서대로만 부른다.
+    private static final Duration HEDGE_DELAY = Duration.ofSeconds(1);
+    private static final Duration CACHE_TTL = Duration.ofDays(1);
+    private static final int CACHE_SIZE = 500;
     private final CatalogProperties properties;
     private final JsonMapper json;
     private final CatalogFetcher fetcher;
+    // 같은 책을 다시 스캔할 때 외부 API를 기다리지 않도록 최근 결과를 접근 순서대로 보관한다.
+    private final Map<String, Cached> cache =
+            new LinkedHashMap<>(16, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Cached> eldest) {
+                    return size() > CACHE_SIZE;
+                }
+            };
+
+    private record Cached(CatalogBook book, long expiresAt) {}
+
+    /** 조회 중 제한 시간이나 오류가 있었는지 기록한다. 그런 결과는 다시 조회하면 달라질 수 있어 보관하지 않는다. */
+    private static final class Attempt {
+        boolean degraded;
+    }
 
     public BookLookupService(
             CatalogProperties properties, JsonMapper json, CatalogFetcher fetcher) {
@@ -44,20 +64,60 @@ public class BookLookupService {
         long deadline = System.nanoTime() + timeout.toNanos();
         String isbn = Isbn.normalize(rawIsbn);
         if (isbn == null) throw ApiException.badRequest("올바른 ISBN이 아니에요.");
-        if (TextValues.isBlank(properties.yes24ApiKey())) return lookupMetadata(isbn, deadline);
+        CatalogBook cached = cached(isbn);
+        if (cached != null) return cached;
+        Attempt attempt = new Attempt();
+        CatalogBook book = fetch(isbn, deadline, attempt);
+        // 404는 보관하지 않아 나중에 등록된 책도 다시 찾을 수 있게 한다.
+        if (book != null && !attempt.degraded) store(isbn, book);
+        return book;
+    }
+
+    /** 외부 조회 응답을 바꾼 테스트가 이전 결과를 받지 않도록 비운다. */
+    public void clearCache() {
+        synchronized (cache) {
+            cache.clear();
+        }
+    }
+
+    private CatalogBook cached(String isbn) {
+        synchronized (cache) {
+            Cached entry = cache.get(isbn);
+            if (entry == null) return null;
+            if (entry.expiresAt() - System.nanoTime() > 0) return entry.book();
+            cache.remove(isbn);
+            return null;
+        }
+    }
+
+    private void store(String isbn, CatalogBook book) {
+        synchronized (cache) {
+            cache.put(isbn, new Cached(book, System.nanoTime() + CACHE_TTL.toNanos()));
+        }
+    }
+
+    private CatalogBook fetch(String isbn, long deadline, Attempt attempt) {
+        if (TextValues.isBlank(properties.yes24ApiKey()))
+            return lookupMetadata(isbn, deadline, attempt);
 
         // 기존 서지 조회의 조기 종료와 관계없이 같은 제한 시간 안에서 표지·분야를 조회한다.
         FutureTask<CatalogBook> images = new FutureTask<>(() -> yes24(isbn));
         Thread.startVirtualThread(images);
         try {
-            CatalogBook metadata = lookupMetadata(isbn, deadline);
-            if (Thread.currentThread().isInterrupted()) return metadata;
+            CatalogBook metadata = lookupMetadata(isbn, deadline, attempt);
+            if (Thread.currentThread().isInterrupted()) {
+                attempt.degraded = true;
+                return metadata;
+            }
             try {
-                return merge(metadata, await("yes24", images, deadline));
+                return merge(
+                        metadata, await("yes24", images, deadline - System.nanoTime(), attempt));
             } catch (TimeoutException e) {
+                attempt.degraded = true;
                 return metadata;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+                attempt.degraded = true;
                 return metadata;
             }
         } finally {
@@ -65,47 +125,102 @@ public class BookLookupService {
         }
     }
 
-    private CatalogBook lookupMetadata(String isbn, long deadline) {
-        Map<String, Supplier<CatalogBook>> sources = new LinkedHashMap<>();
+    private CatalogBook lookupMetadata(String isbn, long deadline, Attempt attempt) {
+        Map<String, Supplier<CatalogBook>> configured = new LinkedHashMap<>();
         if (!TextValues.isBlank(properties.nlkCertKey()))
-            sources.put("nlk", () -> nlk(isbn));
+            configured.put("nlk", () -> nlk(isbn));
         // FR-01: 국립중앙도서관은 KDC를 거의 주지 않아 도서관이 분류한 정보나루 KDC로 장르를 보완한다.
         if (!TextValues.isBlank(properties.data4libraryAuthKey()))
-            sources.put("data4library", () -> data4library(isbn));
+            configured.put("data4library", () -> data4library(isbn));
         if (!TextValues.isBlank(properties.kakaoRestApiKey()))
-            sources.put("kakao", () -> kakao(isbn));
+            configured.put("kakao", () -> kakao(isbn));
         if (!TextValues.isBlank(properties.googleBooksKey()))
-            sources.put("google", () -> google(isbn));
-        sources.put("openlibrary", () -> openLibrary(isbn));
+            configured.put("google", () -> google(isbn));
+        configured.put("openlibrary", () -> openLibrary(isbn));
+        List<Map.Entry<String, Supplier<CatalogBook>>> sources = List.copyOf(configured.entrySet());
 
+        List<FutureTask<CatalogBook>> started = new ArrayList<>();
         CatalogBook merged = null;
-        for (var source : sources.entrySet()) {
-            if (deadline - System.nanoTime() <= 0) break;
-            FutureTask<CatalogBook> task = new FutureTask<>(source.getValue()::get);
-            // 연결과 본문 읽기를 포함해 남은 시간만 기다린다.
-            Thread.startVirtualThread(task);
+        try {
+            long lastStart = System.nanoTime();
+            for (int i = 0; i < sources.size(); i++) {
+                if (started.size() <= i) {
+                    if (deadline - System.nanoTime() <= 0) {
+                        attempt.degraded = true;
+                        return merged;
+                    }
+                    lastStart = start(sources.get(i), started);
+                }
+                CatalogBook result;
+                while (true) {
+                    long now = System.nanoTime();
+                    boolean canHedge = started.size() < sources.size();
+                    // 연결과 본문 읽기를 포함해 남은 시간만 기다리고, 오래 걸리면 다음 조회처를 함께 시작한다.
+                    long wait =
+                            canHedge
+                                    ? Math.min(deadline - now, lastStart + HEDGE_DELAY.toNanos() - now)
+                                    : deadline - now;
+                    try {
+                        result = await(sources.get(i).getKey(), started.get(i), wait, attempt);
+                        break;
+                    } catch (TimeoutException e) {
+                        if (deadline - System.nanoTime() <= 0) {
+                            attempt.degraded = true;
+                            return mergeFinished(merged, sources, started, i, attempt);
+                        }
+                        lastStart = start(sources.get(started.size()), started);
+                    }
+                }
+                merged = merge(merged, result);
+                if (isComplete(merged)) return merged;
+            }
+            return merged;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            attempt.degraded = true;
+            return merged;
+        } finally {
+            started.forEach(task -> task.cancel(true));
+        }
+    }
+
+    private static long start(
+            Map.Entry<String, Supplier<CatalogBook>> source, List<FutureTask<CatalogBook>> started) {
+        FutureTask<CatalogBook> task = new FutureTask<>(source.getValue()::get);
+        started.add(task);
+        Thread.startVirtualThread(task);
+        return System.nanoTime();
+    }
+
+    /** 제한 시간에 걸리면 앞 조회처를 기다리던 사이에 끝난 뒤 조회처 결과도 우선순위대로 합친다. */
+    private static CatalogBook mergeFinished(
+            CatalogBook merged,
+            List<Map.Entry<String, Supplier<CatalogBook>>> sources,
+            List<FutureTask<CatalogBook>> started,
+            int from,
+            Attempt attempt)
+            throws InterruptedException {
+        for (int i = from; i < started.size(); i++) {
+            FutureTask<CatalogBook> task = started.get(i);
+            if (!task.isDone()) continue;
             try {
-                merged = merge(merged, await(source.getKey(), task, deadline));
-                if (isComplete(merged)) break;
-            } catch (TimeoutException e) {
-                task.cancel(true);
-                break;
-            } catch (InterruptedException e) {
-                task.cancel(true);
-                Thread.currentThread().interrupt();
-                break;
+                merged = merge(merged, await(sources.get(i).getKey(), task, 0, attempt));
+            } catch (TimeoutException ignored) {
+                // isDone을 확인한 뒤라 일어나지 않는다.
             }
         }
         return merged;
     }
 
-    private static CatalogBook await(String source, FutureTask<CatalogBook> task, long deadline)
+    private static CatalogBook await(
+            String source, FutureTask<CatalogBook> task, long timeoutNanos, Attempt attempt)
             throws InterruptedException, TimeoutException {
         try {
-            return task.get(deadline - System.nanoTime(), TimeUnit.NANOSECONDS);
+            return task.get(Math.max(timeoutNanos, 0), TimeUnit.NANOSECONDS);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof Error error) throw error;
+            attempt.degraded = true;
             // FR-01: 예외 메시지에는 키를 포함한 URL이 있을 수 있으므로 예외 종류만 남긴다.
             log.warn("{} 도서 조회 실패: {}", source, cause.getClass().getSimpleName());
             return null;
