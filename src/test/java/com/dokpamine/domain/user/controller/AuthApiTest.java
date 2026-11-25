@@ -116,6 +116,28 @@ class AuthApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-10 가입과 프로필 수정은 닉네임 15자까지 허용하며 기존 긴 닉네임을 유지한다")
+    void validatesNicknameLength() throws Exception {
+        String username = UUID.randomUUID().toString().substring(0, 8);
+        String limit = "가".repeat(15);
+        String legacy = "가".repeat(16);
+        var signupError = request(post("/api/auth/signup"), null,
+                Map.of("username", username, "password", "password1", "nickname", legacy), 400);
+        assertEquals("VALIDATION_FAILED", signupError.path("code").asString());
+        var created = request(post("/api/auth/signup"), null,
+                Map.of("username", username, "password", "password1", "nickname", " " + limit + " "), 201);
+        assertEquals(limit, created.path("user").path("nickname").asString());
+
+        var user = user(legacy, false);
+        var unchanged = request(patch("/api/me"), user, Map.of("rankingOptIn", true), 200);
+        assertEquals(legacy, unchanged.path("nickname").asString());
+        var updateError = request(patch("/api/me"), user, Map.of("nickname", legacy), 400);
+        assertEquals("VALIDATION_FAILED", updateError.path("code").asString());
+        var changed = request(patch("/api/me"), user, Map.of("nickname", limit), 200);
+        assertEquals(limit, changed.path("nickname").asString());
+    }
+
+    @Test
     @DisplayName("FR-10 정규화 후 빈 닉네임 수정은 거부하고 기존 프로필을 유지한다")
     void rejectsBlankProfileNickname() throws Exception {
         var user = user();

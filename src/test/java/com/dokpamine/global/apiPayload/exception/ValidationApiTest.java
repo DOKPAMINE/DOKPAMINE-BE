@@ -35,8 +35,8 @@ class ValidationApiTest extends ApiTestSupport {
                 Arguments.of("/api/auth/signup", signup("username", "reader@test.com"), "아이디는 영문, 숫자, 밑줄을 사용해 4~30자로 입력해 주세요."),
                 Arguments.of("/api/auth/signup", signup("password", "short"), "비밀번호를 8~64자로 입력해 주세요."),
                 Arguments.of("/api/auth/signup", signup("password", "가".repeat(25)), "비밀번호를 UTF-8 기준 72바이트 이하로 입력해 주세요."),
-                Arguments.of("/api/auth/signup", signup("nickname", ""), "닉네임을 1~30자로 입력해 주세요."),
-                Arguments.of("/api/auth/signup", Map.of("username", "invalid", "password", "short", "nickname", ""), "닉네임을 1~30자로 입력해 주세요."));
+                Arguments.of("/api/auth/signup", signup("nickname", ""), "닉네임을 1~15자로 입력해 주세요."),
+                Arguments.of("/api/auth/signup", Map.of("username", "invalid", "password", "short", "nickname", ""), "닉네임을 1~15자로 입력해 주세요."));
     }
 
     private static Map<String, Object> signup(String field, Object value) {

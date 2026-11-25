@@ -11,7 +11,7 @@ public record SignupRequest(
         @Size(min = 8, max = 64, message = "비밀번호를 8~64자로 입력해 주세요.")
         @BcryptPasswordLength String password,
         @NotNull(message = "필수 값을 입력해 주세요.")
-        @Size(min = 1, max = 30, message = "닉네임을 1~30자로 입력해 주세요.") String nickname) {
+        @Size(min = 1, max = 15, message = "닉네임을 1~15자로 입력해 주세요.") String nickname) {
     public SignupRequest {
         username = TextValues.trimToNull(username);
         nickname = TextValues.trim(nickname);
