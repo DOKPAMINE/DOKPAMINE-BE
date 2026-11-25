@@ -39,22 +39,22 @@ import java.util.concurrent.TimeUnit;
 class AuthSignupRaceApiTest extends ApiTestSupport {
     @MockitoSpyBean private UserRepository userRepository;
     @Autowired private AuthService authService;
-    private final String email = UUID.randomUUID() + "@test.com";
+    private final String username = UUID.randomUUID().toString().substring(0, 8);
 
     @AfterEach
     void cleanCommittedData() {
         reset(userRepository);
-        User saved = users.findByEmail(email);
+        User saved = users.findByUsername(username);
         if (saved != null) users.deleteById(saved.getId());
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
-    @DisplayName("FR-10 같은 이메일로 동시에 가입하면 한 건만 저장하고 다른 요청은 409 EMAIL_TAKEN을 반환한다")
-    void preservesEmailConflictContract(boolean normalizeEmail) throws Exception {
+    @DisplayName("FR-10 같은 아이디로 동시에 가입하면 한 건만 저장하고 다른 요청은 409 USERNAME_TAKEN을 반환한다")
+    void preservesUsernameConflictContract(boolean normalizeUsername) throws Exception {
         long originalCount = users.count();
-        String contenderEmail = normalizeEmail
-                ? "\u00a0 " + email.toUpperCase(Locale.ROOT) + "\u3000" : email;
+        String contenderUsername = normalizeUsername
+                ? "\u00a0 " + username.toUpperCase(Locale.ROOT) + "\u3000" : username;
         CyclicBarrier bothChecked = new CyclicBarrier(2);
         var repositoryQuery = mockingDetails(userRepository).getMockCreationSettings().getDefaultAnswer();
         doAnswer(invocation -> {
@@ -63,22 +63,22 @@ class AuthSignupRaceApiTest extends ApiTestSupport {
             // FR-10: 두 요청이 실제 DB 중복 조회를 통과한 뒤에 저장하도록 맞춘다.
             bothChecked.await(10, TimeUnit.SECONDS);
             return exists;
-        }).when(userRepository).existsByEmail(email);
+        }).when(userRepository).existsByUsername(username);
 
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> signup(email));
-            var second = executor.submit(() -> signup(contenderEmail));
+            var first = executor.submit(() -> signup(username));
+            var second = executor.submit(() -> signup(contenderUsername));
             var responses = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
             assertEquals(List.of(201, 409), responses.stream().map(r -> r.getStatus()).sorted().toList());
             var conflict = responses.stream().filter(r -> r.getStatus() == 409).findFirst().orElseThrow();
             var error = json.readTree(conflict.getContentAsByteArray());
-            assertEquals("EMAIL_TAKEN", error.path("code").asString());
-            assertEquals("이미 가입된 이메일이에요.", error.path("message").asString());
+            assertEquals("USERNAME_TAKEN", error.path("code").asString());
+            assertEquals("이미 사용 중인 아이디예요.", error.path("message").asString());
             assertFalse(error.has("accessToken"));
             var created = json.readTree(responses.stream().filter(r -> r.getStatus() == 201)
                     .findFirst().orElseThrow().getContentAsByteArray());
             assertEquals(originalCount + 1, users.count());
-            User saved = users.findByEmail(email);
+            User saved = users.findByUsername(username);
             assertEquals(saved.getId().toString(), created.path("user").path("id").asString());
             mvc.perform(get("/api/me").header("Authorization", "Bearer "
                             + created.path("accessToken").asString()))
@@ -87,20 +87,20 @@ class AuthSignupRaceApiTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("FR-10 UNIQUE 이외의 저장 오류는 EMAIL_TAKEN으로 변환하지 않는다")
+    @DisplayName("FR-10 UNIQUE 이외의 저장 오류는 USERNAME_TAKEN으로 변환하지 않는다")
     void preservesOtherIntegrityFailures() {
         var failure = new DataIntegrityViolationException("길이 초과", new SQLException("길이 초과", "22001"));
         doThrow(failure).when(userRepository).saveAndFlush(any(User.class));
         assertSame(failure, assertThrows(DataIntegrityViolationException.class,
-                () -> authService.signup(new SignupRequest(email, "password1", "독자"))));
-        assertFalse(users.existsByEmail(email));
+                () -> authService.signup(new SignupRequest(username, "password1", "독자"))));
+        assertFalse(users.existsByUsername(username));
     }
 
-    private org.springframework.mock.web.MockHttpServletResponse signup(String email) throws Exception {
+    private org.springframework.mock.web.MockHttpServletResponse signup(String username) throws Exception {
         return mvc.perform(post("/api/auth/signup")
                         .contentType(APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of(
-                                "email", email, "password", "password1", "nickname", "독자"))))
+                                "username", username, "password", "password1", "nickname", "독자"))))
                 .andReturn().getResponse();
     }
 }

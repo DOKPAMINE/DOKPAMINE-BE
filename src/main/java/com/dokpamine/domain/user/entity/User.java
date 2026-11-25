@@ -15,7 +15,7 @@ public class User {
     @Id private UUID id;
 
     @Column(nullable = false, unique = true)
-    private String email;
+    private String username;
 
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
@@ -33,29 +33,29 @@ public class User {
 
     public User(
             UUID id,
-            String email,
+            String username,
             String passwordHash,
             String nickname,
             boolean rankingOptIn,
             Instant createdAt) {
         this.id = id;
-        this.email = email;
+        this.username = username;
         this.passwordHash = passwordHash;
         this.nickname = nickname;
         this.rankingOptIn = rankingOptIn;
         this.createdAt = createdAt;
     }
 
-    public User(UUID id, String email, String passwordHash, String nickname) {
-        this(id, email, passwordHash, nickname, false, Instant.now());
+    public User(UUID id, String username, String passwordHash, String nickname) {
+        this(id, username, passwordHash, nickname, false, Instant.now());
     }
 
     public UUID getId() {
         return id;
     }
 
-    public String getEmail() {
-        return email;
+    public String getUsername() {
+        return username;
     }
 
     public String getPasswordHash() {

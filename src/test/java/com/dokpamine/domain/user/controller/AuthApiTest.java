@@ -4,68 +4,88 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.dokpamine.domain.user.entity.User;
 import com.dokpamine.support.ApiTestSupport;
 
 import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import tools.jackson.databind.JsonNode;
 
 import java.util.*;
 
 class AuthApiTest extends ApiTestSupport {
+    @Autowired private PasswordEncoder passwords;
+
     @Test
     @DisplayName("FR-10 회원가입 토큰으로 내 정보를 조회하고 로그인한다")
     void signupAndLogin() throws Exception {
-        String email = UUID.randomUUID() + "@test.com";
+        String username = UUID.randomUUID().toString().substring(0, 8);
         JsonNode created =
                 request(
                         post("/api/auth/signup"),
                         null,
                         Map.of(
-                                "email",
-                                email.toUpperCase(Locale.ROOT),
+                                "username",
+                                username.toUpperCase(Locale.ROOT),
                                 "password",
                                 "password1",
                                 "nickname",
                                 "독자"),
                         201);
         String token = created.path("accessToken").asString();
-        assertEquals(email, created.path("user").path("email").asString());
+        assertEquals(username, created.path("user").path("username").asString());
         assertFalse(created.path("user").path("rankingOptIn").asBoolean());
-        mvc.perform(get("/api/me").header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+        var me = json.readTree(mvc.perform(get("/api/me").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray());
+        assertEquals(username, me.path("username").asString());
         JsonNode login =
                 request(
                         post("/api/auth/login"),
                         null,
-                        Map.of("email", email, "password", "password1"),
+                        Map.of("username", username, "password", "password1"),
                         200);
         assertEquals(created.path("user").path("id"), login.path("user").path("id"));
-        request(
-                post("/api/auth/signup"),
-                null,
-                Map.of("email", email, "password", "password1", "nickname", "독자"),
-                409);
+        var duplicate = request(post("/api/auth/signup"), null,
+                Map.of("username", username, "password", "password1", "nickname", "독자"), 409);
+        assertEquals("USERNAME_TAKEN", duplicate.path("code").asString());
         assertEquals(
                 "INVALID_CREDENTIALS",
                 request(
                                 post("/api/auth/login"),
                                 null,
-                                Map.of("email", email, "password", "wrong"),
+                                Map.of("username", username, "password", "wrong"),
                                 401)
                         .path("code")
                         .asString());
     }
 
     @Test
+    @DisplayName("FR-10 기존 이메일 계정은 새 앱과 구버전 앱에서 같은 사용자로 로그인한다")
+    void logsInWithLegacyEmail() throws Exception {
+        String email = "reader." + UUID.randomUUID() + "@test.com";
+        UUID id = UUID.randomUUID();
+        users.saveAndFlush(new User(id, email, passwords.encode("password1"), "독자"));
+
+        for (String field : List.of("username", "email")) {
+            var login = request(post("/api/auth/login"), null,
+                    Map.of(field, " " + email.toUpperCase(Locale.ROOT) + " ", "password", "password1"), 200);
+            assertEquals(id.toString(), login.path("user").path("id").asString());
+            assertEquals(email, login.path("user").path("username").asString());
+        }
+    }
+
+    @Test
     @DisplayName("FR-10 한글 비밀번호가 72바이트를 넘으면 400을 반환하고 정확히 72바이트면 가입한다")
     void validatesSignupPasswordByteLength() throws Exception {
-        String email = UUID.randomUUID() + "@test.com";
+        String username = UUID.randomUUID().toString().substring(0, 8);
         JsonNode error =
                 request(
                         post("/api/auth/signup"),
                         null,
-                        Map.of("email", email, "password", "가".repeat(25), "nickname", "독자"),
+                        Map.of("username", username, "password", "가".repeat(25), "nickname", "독자"),
                         400);
         assertEquals("VALIDATION_FAILED", error.path("code").asString());
         assertEquals(
@@ -75,17 +95,17 @@ class AuthApiTest extends ApiTestSupport {
         request(
                 post("/api/auth/signup"),
                 null,
-                Map.of("email", email, "password", "가".repeat(24), "nickname", "독자"),
+                Map.of("username", username, "password", "가".repeat(24), "nickname", "독자"),
                 201);
     }
     @Test
-    @DisplayName("FR-10 정규화 후 빈 이메일과 닉네임은 가입을 거부한다")
+    @DisplayName("FR-10 정규화 후 빈 아이디과 닉네임은 가입을 거부한다")
     void rejectsBlankSignupFields() throws Exception {
         long count = users.count();
         for (String blank : List.of("", "   ", "\t\r\n", "\u00a0\u2003\u3000")) {
-            for (String field : List.of("email", "nickname")) {
+            for (String field : List.of("username", "nickname")) {
                 Map<String, Object> body = new HashMap<>(Map.of(
-                        "email", UUID.randomUUID() + "@test.com",
+                        "username", UUID.randomUUID().toString().substring(0, 8),
                         "password", "password1", "nickname", "독자"));
                 body.put(field, blank);
                 JsonNode error = request(post("/api/auth/signup"), null, body, 400);
@@ -93,6 +113,28 @@ class AuthApiTest extends ApiTestSupport {
                 assertEquals(count, users.count());
             }
         }
+    }
+
+    @Test
+    @DisplayName("FR-10 가입과 프로필 수정은 닉네임 15자까지 허용하며 기존 긴 닉네임을 유지한다")
+    void validatesNicknameLength() throws Exception {
+        String username = UUID.randomUUID().toString().substring(0, 8);
+        String limit = "가".repeat(15);
+        String legacy = "가".repeat(16);
+        var signupError = request(post("/api/auth/signup"), null,
+                Map.of("username", username, "password", "password1", "nickname", legacy), 400);
+        assertEquals("VALIDATION_FAILED", signupError.path("code").asString());
+        var created = request(post("/api/auth/signup"), null,
+                Map.of("username", username, "password", "password1", "nickname", " " + limit + " "), 201);
+        assertEquals(limit, created.path("user").path("nickname").asString());
+
+        var user = user(legacy, false);
+        var unchanged = request(patch("/api/me"), user, Map.of("rankingOptIn", true), 200);
+        assertEquals(legacy, unchanged.path("nickname").asString());
+        var updateError = request(patch("/api/me"), user, Map.of("nickname", legacy), 400);
+        assertEquals("VALIDATION_FAILED", updateError.path("code").asString());
+        var changed = request(patch("/api/me"), user, Map.of("nickname", limit), 200);
+        assertEquals(limit, changed.path("nickname").asString());
     }
 
     @Test
@@ -114,13 +156,13 @@ class AuthApiTest extends ApiTestSupport {
     @Test
     @DisplayName("FR-10 가입과 수정은 공백을 제거하고 닉네임 생략과 null은 기존 값을 유지한다")
     void normalizesUserFieldsAndPreservesOptionalNickname() throws Exception {
-        String email = UUID.randomUUID() + "@test.com";
+        String username = UUID.randomUUID().toString().substring(0, 8);
         JsonNode created = request(post("/api/auth/signup"), null,
-                Map.of("email", "\u00a0 " + email.toUpperCase(Locale.ROOT) + "\u3000",
+                Map.of("username", "\u00a0 " + username.toUpperCase(Locale.ROOT) + "\u3000",
                         "password", "password1", "nickname", "\u00a0 독자 \u3000"), 201);
-        assertEquals(email, created.path("user").path("email").asString());
+        assertEquals(username, created.path("user").path("username").asString());
         assertEquals("독자", created.path("user").path("nickname").asString());
-        var user = users.findByEmail(email);
+        var user = users.findByUsername(username);
         JsonNode changed = request(patch("/api/me"), user,
                 Map.of("nickname", "\u00a0 새 이름 \u3000"), 200);
         assertEquals("새 이름", changed.path("nickname").asString());
@@ -152,7 +194,7 @@ class AuthApiTest extends ApiTestSupport {
         request(
                 post("/api/auth/signup"),
                 null,
-                Map.of("email", "invalid", "password", "short", "nickname", ""),
+                Map.of("username", "invalid", "password", "short", "nickname", ""),
                 400);
         request(get("/api/me"), null, null, 401);
         mvc.perform(get("/api/me").header("Authorization", "Bearer invalid"))

@@ -44,9 +44,9 @@ public class AuthService {
 
     @Transactional
     public TokenResponse signup(SignupRequest request) {
-        String email = TextValues.trim(request.email()).toLowerCase(Locale.ROOT);
-        if (users.existsByEmail(email))
-            throw ApiException.conflict("EMAIL_TAKEN", "이미 가입된 이메일이에요.");
+        String username = request.username().toLowerCase(Locale.ROOT);
+        if (users.existsByUsername(username))
+            throw ApiException.conflict("USERNAME_TAKEN", "이미 사용 중인 아이디예요.");
         User user;
         try {
             // FR-10: 사전 조회를 함께 통과한 가입도 토큰 발급 전에 UNIQUE 충돌을 확인한다.
@@ -54,13 +54,13 @@ public class AuthService {
                     users.saveAndFlush(
                             new User(
                                     UUID.randomUUID(),
-                                    email,
+                                    username,
                                     passwords.encode(request.password()),
                                     TextValues.trim(request.nickname())));
         } catch (DataIntegrityViolationException e) {
             if (e.getMostSpecificCause() instanceof SQLException sql
                     && "23505".equals(sql.getSQLState())) {
-                throw ApiException.conflict("EMAIL_TAKEN", "이미 가입된 이메일이에요.");
+                throw ApiException.conflict("USERNAME_TAKEN", "이미 사용 중인 아이디예요.");
             }
             throw e;
         }
@@ -68,10 +68,10 @@ public class AuthService {
     }
 
     public TokenResponse login(LoginRequest request) {
-        User user = users.findByEmail(TextValues.trim(request.email()).toLowerCase(Locale.ROOT));
+        User user = users.findByUsername(request.username().toLowerCase(Locale.ROOT));
         if (user == null || !passwords.matches(request.password(), user.getPasswordHash())) {
             throw new ApiException(
-                    HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 맞지 않아요.");
+                    HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", "아이디 또는 비밀번호가 맞지 않아요.");
         }
         return issueToken(user);
     }

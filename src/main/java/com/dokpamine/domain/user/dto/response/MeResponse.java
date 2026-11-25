@@ -6,8 +6,8 @@ import jakarta.validation.constraints.*;
 
 import java.util.UUID;
 
-public record MeResponse(UUID id, String email, String nickname, boolean rankingOptIn) {
+public record MeResponse(UUID id, String username, String nickname, boolean rankingOptIn) {
     public MeResponse(User user) {
-        this(user.getId(), user.getEmail(), user.getNickname(), user.getRankingOptIn());
+        this(user.getId(), user.getUsername(), user.getNickname(), user.getRankingOptIn());
     }
 }

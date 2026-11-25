@@ -28,19 +28,20 @@ class ValidationApiTest extends ApiTestSupport {
 
     static Stream<Arguments> invalidAuthRequests() {
         return Stream.of(
-                Arguments.of("/api/auth/login", Map.of(), "필수 값을 입력해 주세요."),
+                Arguments.of("/api/auth/login", Map.of("password", "password1"), "아이디를 입력해 주세요."),
+                Arguments.of("/api/auth/login", Map.of("username", "reader_01"), "필수 값을 입력해 주세요."),
                 Arguments.of("/api/auth/signup", signup("password", null), "필수 값을 입력해 주세요."),
-                Arguments.of("/api/auth/signup", signup("email", "   "), "이메일을 입력해 주세요."),
-                Arguments.of("/api/auth/signup", signup("email", "invalid"), "올바른 이메일 주소를 입력해 주세요."),
+                Arguments.of("/api/auth/signup", signup("username", "   "), "아이디를 입력해 주세요."),
+                Arguments.of("/api/auth/signup", signup("username", "reader@test.com"), "아이디는 영문, 숫자, 밑줄을 사용해 4~30자로 입력해 주세요."),
                 Arguments.of("/api/auth/signup", signup("password", "short"), "비밀번호를 8~64자로 입력해 주세요."),
                 Arguments.of("/api/auth/signup", signup("password", "가".repeat(25)), "비밀번호를 UTF-8 기준 72바이트 이하로 입력해 주세요."),
-                Arguments.of("/api/auth/signup", signup("nickname", ""), "닉네임을 1~30자로 입력해 주세요."),
-                Arguments.of("/api/auth/signup", Map.of("email", "invalid", "password", "short", "nickname", ""), "닉네임을 1~30자로 입력해 주세요."));
+                Arguments.of("/api/auth/signup", signup("nickname", ""), "닉네임을 1~15자로 입력해 주세요."),
+                Arguments.of("/api/auth/signup", Map.of("username", "invalid", "password", "short", "nickname", ""), "닉네임을 1~15자로 입력해 주세요."));
     }
 
     private static Map<String, Object> signup(String field, Object value) {
         Map<String, Object> body = new HashMap<>(Map.of(
-                "email", "reader@test.com", "password", "password1", "nickname", "독자"));
+                "username", "reader_01", "password", "password1", "nickname", "독자"));
         body.put(field, value);
         return body;
     }
