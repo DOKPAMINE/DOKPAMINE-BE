@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.dokpamine.domain.catalog.client.CatalogFetcher;
+import com.dokpamine.domain.catalog.service.BookLookupService;
 import com.dokpamine.domain.record.entity.*;
 import com.dokpamine.domain.record.repository.*;
 import com.dokpamine.domain.user.entity.User;
@@ -50,11 +51,14 @@ public abstract class ApiTestSupport {
     @Autowired protected ReviewRepository reviews;
     @Autowired protected EntityManager em;
     @MockitoBean protected CatalogFetcher fetcher;
+    @Autowired protected BookLookupService lookups;
     protected static final Instant MONDAY = Instant.parse("2026-10-25T15:00:00Z");
 
     @BeforeEach
     void clearExternalResponses() {
         reset(fetcher);
+        // 테스트마다 외부 응답을 바꾸므로 이전 테스트의 ISBN 조회 결과를 쓰지 않는다.
+        lookups.clearCache();
     }
 
     protected User user() {
