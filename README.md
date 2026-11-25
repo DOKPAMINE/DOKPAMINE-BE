@@ -55,20 +55,18 @@ API 키, JWT 서명 키, DB 비밀번호는 프로젝트 루트의 `.env`에서 
 처음 설정하는 환경에서는 `.env.example`을 `.env`로 복사하고 필요한 값을 입력하세요.
 `.env`와 `.env.*`는 Git에서 제외되며, 실제 값이 없는 `.env.example`만 공유합니다.
 
-`.env`는 자동으로 로딩되지 않습니다. macOS / Linux에서는 프로젝트 루트에서
-다음 명령으로 환경 변수에 반영한 뒤 서버를 실행하세요. 값을 바꾸면 서버를 중지하고 다시 실행합니다.
+서버는 시작할 때 실행 폴더(프로젝트 루트)의 `.env`를 자동으로 읽습니다. 운영체제나 IDE와 관계없이
+프로젝트 루트에서 `./gradlew bootRun`(Windows는 `gradlew.bat bootRun`)만 실행하면 됩니다.
+시작 로그에 `.env에서 설정 N개를 읽었습니다`가 나오면 정상입니다. 값을 바꾸면 서버를 다시 실행합니다.
 
-```bash
-set -a
-source .env
-set +a
-./gradlew bootRun
-```
+- `KEY=value`, `KEY='value'`, `KEY="value"`, `export KEY=value`를 읽고, 감싼 따옴표는 뺍니다.
+- `#`로 시작하는 줄과 따옴표 없는 값의 ` #` 뒤는 주석으로 봅니다.
+- 같은 이름의 OS 환경 변수나 실행 인자가 있으면 그 값이 `.env`보다 우선합니다. 운영 서버는 지금처럼 환경 변수로 설정합니다.
+- 자동 테스트(`test` 프로필)에서는 `.env`를 읽지 않습니다.
 
-IntelliJ에서는 실행 설정(Edit Configurations)의 Environment variables 칸 오른쪽 폴더 아이콘으로
-`.env`를 지정하세요. IntelliJ는 등호가 있는 `#` 줄도 변수로 읽으므로, `.env`의 주석에는 등호를 쓰지 않습니다.
-Windows에서 실행할 때는 실행 환경의 환경 변수에 동일한 값을 설정하세요.
-파일에 적힌 값은 애플리케이션에 환경 변수로 전달하며, Java 코드나 `application.yml`에 실제 키를 입력하지 않습니다.
+IntelliJ 실행 설정에서 `.env`를 Environment variables로 지정해 둔 경우에도 그대로 동작합니다.
+IntelliJ는 등호가 있는 `#` 줄도 변수로 읽으므로, `.env`의 주석에는 등호를 쓰지 않습니다.
+Java 코드나 `application.yml`에 실제 키를 입력하지 않습니다.
 
 | 이름 | 용도 | 기본값 |
 |---|---|---|
