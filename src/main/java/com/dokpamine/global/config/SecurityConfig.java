@@ -1,5 +1,7 @@
 package com.dokpamine.global.config;
 
+import com.dokpamine.domain.user.repository.UserRepository;
+import com.dokpamine.global.jwt.ExistingUserValidator;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
 import org.springframework.context.annotation.*;
@@ -9,6 +11,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.web.SecurityFilterChain;
@@ -70,7 +73,13 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder() {
-        return NimbusJwtDecoder.withSecretKey(secretKey).macAlgorithm(MacAlgorithm.HS256).build();
+    JwtDecoder jwtDecoder(UserRepository users) {
+        NimbusJwtDecoder decoder =
+                NimbusJwtDecoder.withSecretKey(secretKey).macAlgorithm(MacAlgorithm.HS256).build();
+        // 기본 만료 검사에 더해 토큰의 사용자가 지금도 있는지 확인한다(FR-10).
+        decoder.setJwtValidator(
+                new DelegatingOAuth2TokenValidator<>(
+                        JwtValidators.createDefault(), new ExistingUserValidator(users)));
+        return decoder;
     }
 }

@@ -1,6 +1,9 @@
 package com.dokpamine.global.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+
+import com.dokpamine.domain.user.repository.UserRepository;
 
 import java.util.Map;
 
@@ -13,6 +16,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
+import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -62,5 +66,11 @@ class JwtStartupTest {
     @TestConfiguration(proxyBeanMethods = false)
     @EnableWebSecurity
     @EnableConfigurationProperties(JwtProperties.class)
-    static class JwtTestConfiguration {}
+    static class JwtTestConfiguration {
+        // 디코더가 토큰 사용자를 확인할 때 쓰는 저장소. 이 테스트는 DB 없이 서명 키 로딩만 본다.
+        @Bean
+        UserRepository users() {
+            return mock(UserRepository.class);
+        }
+    }
 }
