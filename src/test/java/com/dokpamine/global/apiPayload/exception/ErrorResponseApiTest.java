@@ -88,6 +88,23 @@ class ErrorResponseApiTest extends ApiTestSupport {
         request(get("/api/nothing"), null, null, 401);
     }
 
+    @Test
+    @DisplayName("NFR-09 없는 감상·ISBN 오류 메시지는 받침에 맞는 조사와 띄어쓰기로 안내한다")
+    void notFoundMessageUsesKoreanParticle() throws Exception {
+        User reader = user();
+        JsonNode error = request(post("/api/feed/{id}/like", UUID.randomUUID()), reader, null, 404);
+        assertEquals("NOT_FOUND", error.path("code").asString());
+        assertEquals("감상을 찾을 수 없어요.", error.path("message").asString());
+
+        error = request(get("/api/catalog/isbn/{isbn}", "123"), reader, null, 400);
+        assertEquals("올바른 ISBN이 아니에요.", error.path("message").asString());
+
+        assertEquals("를", ApiException.objectParticle("도서 정보"));
+        assertEquals("를", ApiException.objectParticle("사용자"));
+        assertEquals("을", ApiException.objectParticle("감상"));
+        assertEquals("을(를)", ApiException.objectParticle("ISBN"));
+    }
+
     private JsonNode raw(MockHttpServletRequestBuilder request, User user, String body, int expected)
             throws Exception {
         if (user != null) request.with(jwt().jwt(token -> token.subject(user.getId().toString())));

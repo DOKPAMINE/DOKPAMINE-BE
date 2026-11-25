@@ -16,7 +16,7 @@ import java.util.UUID;
 
 public record BookDto(
         @NotNull(message = "필수 값을 입력해 주세요.") UUID id,
-        @Pattern(regexp = "^(\\d{10}|\\d{13})$", message = "ISBN 은 10자리 또는 13자리 숫자여야 해요.")
+        @Pattern(regexp = "^(\\d{10}|\\d{13})$", message = "ISBN은 10자리 또는 13자리 숫자여야 해요.")
                 String isbn,
         @NotNull(message = "필수 값을 입력해 주세요.")
         @NotBlank(message = "공백이 아닌 값을 입력해 주세요.")

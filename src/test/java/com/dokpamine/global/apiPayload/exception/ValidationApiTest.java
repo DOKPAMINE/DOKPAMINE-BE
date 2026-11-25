@@ -71,6 +71,6 @@ class ValidationApiTest extends ApiTestSupport {
                 Arguments.of("title", "가".repeat(201), "200자 이하로 입력해 주세요."),
                 Arguments.of("totalPages", 0, "1 이상의 값을 입력해 주세요."),
                 Arguments.of("currentPage", -1, "0 이상의 값을 입력해 주세요."),
-                Arguments.of("isbn", "invalid", "ISBN 은 10자리 또는 13자리 숫자여야 해요."));
+                Arguments.of("isbn", "invalid", "ISBN은 10자리 또는 13자리 숫자여야 해요."));
     }
 }
