@@ -220,6 +220,34 @@ class FeedApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-16 검색어와 제목의 띄어쓰기를 무시하고 공백을 뺀 제목의 일부를 찾는다")
+    void ignoresTitleWhitespace() throws Exception {
+        User me = user();
+        var spaced = review(me, book(me, "어린 왕자", "생텍쥐페리", null), Visibility.PUBLIC, MONDAY);
+        var unspaced = review(me, book(me, "어린왕자", "생텍쥐페리", null), Visibility.PUBLIC, MONDAY);
+        var unicodeSpace =
+                review(
+                        me,
+                        book(me, "어린\t\u00a0왕\n\u3000자", "다른 저자", null),
+                        Visibility.PUBLIC,
+                        MONDAY);
+        review(me, book(me, "어린 별의 왕자", "저자", null), Visibility.PUBLIC, MONDAY);
+        Set<String> expectedIds =
+                Set.of(spaced.getId().toString(), unspaced.getId().toString(), unicodeSpace.getId().toString());
+
+        for (String query : List.of("어린왕자", "어린 왕자", "린\t\u00a0왕", "어\u3000린 왕\n자")) {
+            JsonNode groups = search(me, query);
+            assertEquals(3, groups.size());
+            Set<String> ids = new HashSet<>();
+            for (JsonNode group : groups) {
+                assertEquals(1, group.path("reviews").size());
+                ids.add(group.path("reviews").path(0).path("id").asString());
+            }
+            assertEquals(expectedIds, ids);
+        }
+    }
+
+    @Test
     @DisplayName("FR-16 다른 ISBN과 ISBN 없는 책은 별도 묶음이다")
     void distinctIsbns() throws Exception {
         User me = user();
@@ -255,7 +283,7 @@ class FeedApiTest extends ApiTestSupport {
     @DisplayName("FR-16 검색어 누락과 빈 값은 400이며 인증이 없으면 401이다")
     void invalidQuery() throws Exception {
         User me = user();
-        for (String query : List.of("", " ", "\t\n"))
+        for (String query : List.of("", " ", "\t\n", "\u00a0\u3000"))
             assertEquals(
                     "BAD_REQUEST",
                     request(get("/api/feed/books").param("query", query), me, null, 400)
@@ -300,7 +328,7 @@ class FeedApiTest extends ApiTestSupport {
         em.clear();
         var candidates =
                 searchBooks.findTitleCandidates(
-                        "%후보%상한%", Visibility.PUBLIC, PageRequest.of(0, 500));
+                        "%후보상한%", " +", Visibility.PUBLIC, PageRequest.of(0, 500));
         assertEquals(500, candidates.size());
         assertEquals("저자0", candidates.getFirst().getAuthor());
         assertEquals("저자499", candidates.getLast().getAuthor());

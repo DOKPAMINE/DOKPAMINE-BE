@@ -34,7 +34,7 @@ public class BookReviewSearchController {
     @Operation(
             summary = "책별 공개 감상 검색",
             description =
-                    "제목의 공백과 대소문자를 정규화해 검색하고 ISBN 또는 제목·저자로 묶습니다. 삭제·비공개 기록을 제외하며 최신 20개 묶음과 묶음별 감상"
+                    "검색어와 제목의 공백 및 대소문자를 무시해 검색하고 ISBN 또는 제목·저자로 묶습니다. 삭제·비공개 기록을 제외하며 최신 20개 묶음과 묶음별 감상"
                             + " 최대 100개를 반환합니다(FR-16, NFR-09).")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "책별 공개 감상 묶음. 일치하는 결과가 없으면 빈 배열"),
