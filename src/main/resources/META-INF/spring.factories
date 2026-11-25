@@ -1,0 +1,2 @@
+org.springframework.boot.EnvironmentPostProcessor=\
+com.dokpamine.global.config.DotenvEnvironmentPostProcessor
