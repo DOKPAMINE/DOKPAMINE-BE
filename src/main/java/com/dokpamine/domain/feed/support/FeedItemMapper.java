@@ -61,6 +61,7 @@ public class FeedItemMapper {
                             author.getNickname(),
                             book.getTitle(),
                             book.getAuthor(),
+                            book.getCoverUrl(),
                             book.getGenre(),
                             review.getOneLine(),
                             review.getBody(),

@@ -156,10 +156,13 @@ class FeedApiTest extends ApiTestSupport {
     void isbnGroupsAndFields() throws Exception {
         User me = user(), other = user();
         var old = review(me, book(me, "데미안", "헤세", "8937460440"), Visibility.PUBLIC, MONDAY);
+        var recentBook = book(other, "Demian", "Hesse", "9788937460449");
+        String coverUrl = "https://example.com/demian.jpg";
+        recentBook.setCoverUrl(coverUrl);
         var recent =
                 review(
                         other,
-                        book(other, "Demian", "Hesse", "9788937460449"),
+                        recentBook,
                         Visibility.PUBLIC,
                         MONDAY.plusSeconds(10));
         review(me, book(me, "데미안", "헤세", "9788937460449"), Visibility.PRIVATE, null);
@@ -171,6 +174,8 @@ class FeedApiTest extends ApiTestSupport {
         assertEquals(2, items.size());
         assertEquals(recent.getId().toString(), items.path(0).path("id").asString());
         assertEquals(old.getId().toString(), items.path(1).path("id").asString());
+        assertEquals(coverUrl, items.path(0).path("coverUrl").asString());
+        assertTrue(items.path(1).path("coverUrl").isNull());
         assertTrue(items.path(0).path("likedByMe").asBoolean());
         assertEquals(1, items.path(0).path("likeCount").asInt());
         assertFalse(items.path(0).path("mine").asBoolean());
@@ -184,6 +189,7 @@ class FeedApiTest extends ApiTestSupport {
                         "nickname",
                         "bookTitle",
                         "bookAuthor",
+                        "coverUrl",
                         "genre",
                         "oneLine",
                         "body",

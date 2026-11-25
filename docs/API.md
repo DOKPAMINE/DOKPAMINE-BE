@@ -135,13 +135,14 @@ QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, 
 
 감상 상세·좋아요 등록·취소는 감상이 없거나 삭제됐거나 연결된 책이 삭제됐으면 작성자에게도 404를 반환한다. 다른 사용자의 비공개 감상도 404를 반환한다.
 
-`FeedItem = {id, userBookId, nickname, bookTitle, bookAuthor, genre, oneLine?, body?, publishedAt?, bodyWrittenAt?, likeCount, likedByMe, mine}`.
-공개 응답에는 닉네임, 책 제목·저자, 감상만 담는다. 독서 시간, 사진, 보관 위치는 노출하지 않는다.
+`FeedItem = {id, userBookId, nickname, bookTitle, bookAuthor, coverUrl?, genre, oneLine?, body?, publishedAt?, bodyWrittenAt?, likeCount, likedByMe, mine}`.
+`coverUrl`은 각 감상에 연결된 책의 `user_books.cover_url`이며, 표지 주소가 저장되지 않은 경우 `null`이다. **AOS 영향 있음**. 라운지 박스와 책별 검색의 `reviews[]`에서 이 값을 사용해 책 표지를 표시할 수 있다.
+독서 시간, 사용자가 저장한 사진, 보관 위치는 노출하지 않는다.
 `userBookId`는 감상이 연결된 사람의 책(`user_books`) UUID다. `bodyWrittenAt`은 그 감상에 독후감(`body`)이 **처음** 채워진 서버 시각이며, 독후감이 없던 적만 있으면 `null`이다.
 
 ### 라운지 박스 (FR-08, S-70, S-72)
 
-`GET /api/feed`는 사람의 책 하나를 박스 하나로 본다. **AOS 영향 있음**: 기존 필드는 그대로이고 `userBookId`, `bodyWrittenAt`만 늘었으므로 구버전 앱은 박스 대표 독후감 목록으로 계속 표시된다.
+`GET /api/feed`는 사람의 책 하나를 박스 하나로 본다. 구버전 앱은 박스 대표 독후감 목록으로 계속 표시된다.
 
 - 공개이고 삭제되지 않았으며 독후감(`body`)이 있는 감상이 하나라도 있는 책만 박스가 된다. 한줄평만 있는 책은 제외하며, 책별 감상 검색(`/api/feed/books`)에서는 그대로 나온다. 삭제된 책은 제외한다.
 - 박스마다 공개 독후감 중 `bodyWrittenAt`이 가장 늦은 감상 한 건을 반환한다. 박스 순서도 그 시각 내림차순이며, 동점은 감상 UUID 문자열 오름차순이다. 최대 100개 박스를 반환한다.
