@@ -26,7 +26,11 @@ import java.util.stream.Collectors;
 @Service
 public class BookReviewSearchService {
     public static final int TITLE_CANDIDATE_LIMIT = 500;
-    private static final Pattern WHITESPACE = Pattern.compile("[\\s\\p{Z}]+");
+    // Java와 DB 정규식이 같은 공백 문자를 제거하도록 각 문자를 명시한다.
+    private static final Pattern WHITESPACE =
+            Pattern.compile(
+                    "[ \t\n\u000b\f\r\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005"
+                            + "\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000]+");
     private static final Comparator<PublicBookSummary> LATEST_FIRST =
             Comparator.comparing(
                             (PublicBookSummary book) ->
@@ -46,21 +50,19 @@ public class BookReviewSearchService {
 
     @Transactional(readOnly = true)
     public List<BookReviewGroup> search(String query, UUID me) {
-        String normalized = normalize(query);
+        String normalized = normalizeForSearch(query);
         if (normalized.isEmpty()) throw ApiException.badRequest("검색어를 입력해 주세요.");
         String pattern =
-                Arrays.stream(normalized.split(" "))
-                        .map(token ->
-                                token.replace("!", "!!").replace("%", "!%").replace("_", "!_"))
-                        .collect(Collectors.joining("%", "%", "%"));
+                "%" + normalized.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
         Set<String> matchingKeys =
                 books
                         .findTitleCandidates(
                                 pattern,
+                                WHITESPACE.pattern(),
                                 Visibility.PUBLIC,
                                 PageRequest.of(0, TITLE_CANDIDATE_LIMIT))
                         .stream()
-                        .filter(book -> normalize(book.getTitle()).contains(normalized))
+                        .filter(book -> normalizeForSearch(book.getTitle()).contains(normalized))
                         .map(book -> bookKey(book.getIsbn(), book.getTitle(), book.getAuthor()))
                         .collect(Collectors.toSet());
         if (matchingKeys.isEmpty()) return List.of();
@@ -73,6 +75,7 @@ public class BookReviewSearchService {
                 books
                         .findPublicBookSummaries(
                                 pattern,
+                                WHITESPACE.pattern(),
                                 isbns,
                                 isbns.stream()
                                         .flatMap(value -> isbnSearchForms(value).stream())
@@ -155,5 +158,9 @@ public class BookReviewSearchService {
 
     private static String normalize(String value) {
         return TextValues.trim(WHITESPACE.matcher(value).replaceAll(" ")).toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizeForSearch(String value) {
+        return TextValues.trim(WHITESPACE.matcher(value).replaceAll("")).toLowerCase(Locale.ROOT);
     }
 }

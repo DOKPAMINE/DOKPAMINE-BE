@@ -15,13 +15,14 @@ public interface BookReviewSearchRepository extends Repository<UserBook, UUID> {
             """
                 select b.id as id, b.title as title, b.author as author, b.isbn as isbn
                 from UserBook b join Review r on r.bookId = b.id
-                where b.deleted = false and lower(b.title) like :pattern escape '!'
+                where b.deleted = false
+                and lower(function('regexp_replace' as String, b.title, :whitespace, '', 'g')) like :pattern escape '!'
                 and r.deleted = false and r.visibility = :visibility
                 group by b.id, b.title, b.author, b.isbn
                 order by max(r.publishedAt) desc nulls last, cast(b.id as String) asc
             """)
     List<BookTitleCandidate> findTitleCandidates(
-            String pattern, Visibility visibility, Pageable pageable);
+            String pattern, String whitespace, Visibility visibility, Pageable pageable);
 
     @Query(
             value =
@@ -34,14 +35,14 @@ public interface BookReviewSearchRepository extends Repository<UserBook, UUID> {
                             from reviews where visibility = 'PUBLIC' and deleted = false
                         ) r on r.book_id = b.id and r.position = 1
                         where b.deleted = false and (
-                            lower(b.title) like :pattern escape '!'
+                            lower(regexp_replace(b.title, :whitespace, '', 'g')) like :pattern escape '!'
                             or trim(b.isbn) in (:isbns)
                             or upper(replace(replace(trim(b.isbn), '-', ''), ' ', '')) in (:isbnForms)
                         )
                     """,
             nativeQuery = true)
     List<PublicBookSummary> findPublicBookSummaries(
-            String pattern, Collection<String> isbns, Collection<String> isbnForms);
+            String pattern, String whitespace, Collection<String> isbns, Collection<String> isbnForms);
 
     @Query(
             """
