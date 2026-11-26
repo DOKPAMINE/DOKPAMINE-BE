@@ -6,6 +6,7 @@ import com.dokpamine.domain.feed.dto.response.FeedItem;
 import com.dokpamine.domain.feed.repository.BookReviewSearchRepository;
 import com.dokpamine.domain.feed.repository.PublicBookSummary;
 import com.dokpamine.domain.feed.support.FeedItemMapper;
+import com.dokpamine.domain.feed.util.BookKeys;
 import com.dokpamine.domain.feed.util.NativePublishedAt;
 import com.dokpamine.domain.record.entity.Review;
 import com.dokpamine.domain.record.entity.Visibility;
@@ -16,7 +17,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
@@ -26,11 +26,7 @@ import java.util.stream.Collectors;
 @Service
 public class BookReviewSearchService {
     public static final int TITLE_CANDIDATE_LIMIT = 500;
-    // Java와 DB 정규식이 같은 공백 문자를 제거하도록 각 문자를 명시한다.
-    private static final Pattern WHITESPACE =
-            Pattern.compile(
-                    "[ \t\n\u000b\f\r\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005"
-                            + "\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000]+");
+    private static final Pattern WHITESPACE = BookKeys.WHITESPACE;
     private static final Comparator<PublicBookSummary> LATEST_FIRST =
             Comparator.comparing(
                             (PublicBookSummary book) ->
@@ -128,22 +124,14 @@ public class BookReviewSearchService {
                             key,
                             latest.bookTitle(),
                             latest.bookAuthor(),
-                            key.startsWith("isbn:") ? key.substring(5) : null,
+                            BookKeys.isbn(key),
                             items));
         }
         return result;
     }
 
     private static String bookKey(String rawIsbn, String title, String author) {
-        String trimmed = TextValues.trim(rawIsbn);
-        if (trimmed != null && !trimmed.isEmpty()) {
-            return "isbn:" + Objects.requireNonNullElse(Isbn.normalize(trimmed), trimmed);
-        }
-        String text = normalize(title) + "\n" + normalize(author);
-        return "text:"
-                + Base64.getUrlEncoder()
-                        .withoutPadding()
-                        .encodeToString(text.getBytes(StandardCharsets.UTF_8));
+        return BookKeys.of(rawIsbn, title, author);
     }
 
     private static List<String> isbnSearchForms(String isbn) {
@@ -154,10 +142,6 @@ public class BookReviewSearchService {
         for (int i = 0; i < 9; i++) sum += (10 - i) * (firstNine.charAt(i) - '0');
         int check = (11 - sum % 11) % 11;
         return List.of(isbn, firstNine + (check == 10 ? "X" : Integer.toString(check)));
-    }
-
-    private static String normalize(String value) {
-        return TextValues.trim(WHITESPACE.matcher(value).replaceAll(" ")).toLowerCase(Locale.ROOT);
     }
 
     private static String normalizeForSearch(String value) {
