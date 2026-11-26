@@ -60,6 +60,7 @@ tasks.register('postgresqlTest', Test) {
         includeTestsMatching 'FeedApiTest'
         includeTestsMatching 'RecordInsertRaceApiTest'
         includeTestsMatching 'FeedLikeRaceApiTest'
+        includeTestsMatching 'LikedBookApiTest'
         includeTestsMatching 'AuthSignupRaceApiTest'
     }
 

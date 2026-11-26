@@ -138,6 +138,7 @@ QuoteDto   {id, bookId, text(1~1000), page?, memo?(≤500), deleted, createdAt, 
 | GET | `/api/feed` | `FeedItem[]` (사람의 책 박스별 대표 독후감, 최대 100개) |
 | GET | `/api/feed/user-books/{userBookId}` | `FeedItem[]` (그 책의 공개 감상 전부) |
 | GET | `/api/feed/books?query=데미안` | `BookReviewGroup[]` (책 이름 검색, 묶음별 공개 감상 최신순) |
+| GET | `/api/feed/liked-books?size=20&cursor=` | `LikedBookPage` (내가 좋아요한 공개 감상을 책별로 묶어 최근 순) |
 | GET | `/api/feed/{reviewId}` | `FeedItem` |
 | POST | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: true}` (중복 요청해도 1회) |
 | DELETE | `/api/feed/{reviewId}/like` | `{likeCount, likedByMe: false}` |
@@ -186,6 +187,27 @@ BookReviewGroup {bookKey, bookTitle, bookAuthor, isbn?, reviews: FeedItem[]}
 - 일치하는 공개 감상이 없으면 `200 []`이다.
 - `query` 누락·빈 문자열·공백만 입력하면 `400 {"code":"BAD_REQUEST","message":"검색어를 입력해 주세요."}`이다.
 - 토큰 누락·만료·무효는 기존 인증 규칙대로 `401`이다.
+
+### 좋아요한 감상 (FR-09, NFR-09)
+
+`GET /api/feed/liked-books`는 마이 화면의 "좋아요한 감상" 목록에 쓰는 API다. 인증이 필요하다. **AOS 영향 있음**(새 엔드포인트).
+
+```text
+LikedBookPage  {items: LikedBookGroup[], nextCursor?}
+LikedBookGroup {bookKey, isbn?, bookTitle, bookAuthor, coverUrl?, lastLikedAt, people: LikedPerson[]}
+LikedPerson    {authorId, nickname, userBookId, likedCount, lastLikedAt, mine}
+```
+
+- 내가 좋아요한 감상 중 지금 `PUBLIC`이고 삭제되지 않았으며 책도 삭제되지 않은 감상만 포함한다. 좋아요 기록은 지우지 않으므로 비공개로 바뀐 감상이 다시 공개되면 목록에 다시 나온다. 내 감상에 누른 좋아요도 포함하며 `mine: true`로 표시한다.
+- 책 묶음 규칙과 `bookKey`, `isbn`은 책별 공개 감상 검색과 같다. 앱은 `bookKey`를 묶음 식별자로 사용한다.
+- `people`은 묶음 안에서 작성자의 책(`userBookId`)마다 한 줄이다. `likedCount`는 그 책의 감상 중 내가 좋아요한 공개 감상 수, `lastLikedAt`은 그중 마지막으로 좋아요한 시각이다. 줄을 누르면 `GET /api/feed/user-books/{userBookId}`로 그 사람의 그 책 공개 감상을 조회한다. `authorId`는 작성자 사용자 UUID로, 닉네임이 바뀌어도 같은 사람을 구분할 때 쓴다.
+- `people`은 `lastLikedAt` 내림차순이며 묶음마다 전부 반환한다. 몇 명까지 보여 줄지는 앱이 정한다.
+- 묶음의 `lastLikedAt`은 `people` 중 가장 늦은 값이다. 대표 제목·저자는 마지막으로 좋아요한 감상의 책에서, `coverUrl`은 최근에 좋아요한 순서로 표지가 있는 첫 책에서 가져오며 없으면 `null`이다.
+- 묶음 순서는 `lastLikedAt` 내림차순, 동점은 `bookKey` 문자열 오름차순이다.
+- `size`는 한 번에 받을 묶음 수로 기본 20, 1~50이다. 마이 미리보기는 `size=3`을 쓴다. 묶음 단위로 자르므로 한 책이 두 페이지에 나뉘지 않는다.
+- 다음 묶음이 더 있으면 `nextCursor`를 준다. 다음 요청에 `cursor`로 그대로 보내면 그 뒤의 묶음을 받는다. 마지막 페이지는 `nextCursor: null`이다. 값은 내용을 해석하지 않는 문자열로 다룬다. 페이지를 넘기는 사이 새로 좋아요한 책은 맨 위로 올라가므로 처음부터 다시 불러야 보인다.
+- 좋아요한 공개 감상이 없으면 `200 {"items": [], "nextCursor": null}`이다.
+- `size`가 1~50 밖이면 `400 {"code":"BAD_REQUEST","message":"한 번에 1개부터 50개까지 불러올 수 있어요."}`, 숫자가 아니면 `400 BAD_REQUEST`, `cursor`를 해석할 수 없으면 `400 {"code":"BAD_REQUEST","message":"다음 페이지 정보가 올바르지 않아요."}`다. 토큰 누락·만료·무효는 `401`이다.
 
 ## 독서왕 랭킹 (FR-15, S-73~S-75)
 
