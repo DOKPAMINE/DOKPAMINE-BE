@@ -9,6 +9,7 @@ import com.dokpamine.global.config.CatalogProperties;
 import com.dokpamine.global.util.TextValues;
 
 import org.slf4j.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import tools.jackson.databind.JsonNode;
@@ -48,6 +49,8 @@ public class BookLookupService {
     /** 조회 중 제한 시간이나 오류가 있었는지 기록한다. 그런 결과는 다시 조회하면 달라질 수 있어 보관하지 않는다. */
     private static final class Attempt {
         boolean degraded;
+        // FR-01: 조회처가 하나라도 정상 응답했는지. 아무도 응답하지 못했으면 책이 없는지 알 수 없다.
+        boolean answered;
     }
 
     public BookLookupService(
@@ -69,6 +72,13 @@ public class BookLookupService {
         if (cached != null) return cached;
         Attempt attempt = new Attempt();
         CatalogBook book = fetch(isbn, deadline, attempt);
+        // FR-01: 연결 문제를 "정보 없음"(404)으로 안내하지 않도록 다시 시도할 수 있는 503으로 구분한다.
+        if (book == null && !attempt.answered) {
+            throw new ApiException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "CATALOG_UNAVAILABLE",
+                    "책 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+        }
         // 404는 보관하지 않아 나중에 등록된 책도 다시 찾을 수 있게 한다.
         if (book != null && !attempt.degraded) store(isbn, book);
         return book;
@@ -247,7 +257,9 @@ public class BookLookupService {
             String source, FutureTask<T> task, long timeoutNanos, Attempt attempt)
             throws InterruptedException, TimeoutException {
         try {
-            return task.get(Math.max(timeoutNanos, 0), TimeUnit.NANOSECONDS);
+            T result = task.get(Math.max(timeoutNanos, 0), TimeUnit.NANOSECONDS);
+            attempt.answered = true;
+            return result;
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof Error error) throw error;

@@ -13,6 +13,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.http.HttpStatus;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -380,7 +381,72 @@ class BookLookupServiceTest {
                         (source, isbn) -> {
                             throw new IllegalStateException("cert_key=test-secret");
                         });
-        assertNull(service.lookup(ISBN));
+        assertThrows(ApiException.class, () -> service.lookup(ISBN));
         assertFalse(output.getAll().contains("test-secret"));
+    }
+
+    @Test
+    @DisplayName("FR-01 모든 조회처가 오류를 내면 정보 없음 대신 다시 시도할 수 있는 503으로 알린다")
+    void allSourcesFailed() {
+        List<String> calls = new ArrayList<>();
+        BookLookupService service =
+                new BookLookupService(
+                        configured,
+                        json,
+                        (source, isbn) -> {
+                            calls.add(source);
+                            throw new IllegalStateException("연결 실패");
+                        });
+
+        ApiException error = assertThrows(ApiException.class, () -> service.lookup(ISBN));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, error.getStatus());
+        assertEquals("CATALOG_UNAVAILABLE", error.getCode());
+        assertEquals("책 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.", error.getMessage());
+
+        // 503은 보관하지 않아 연결이 돌아오면 다시 조회한다.
+        int firstCalls = calls.size();
+        assertThrows(ApiException.class, () -> service.lookup(ISBN));
+        assertEquals(firstCalls * 2, calls.size());
+    }
+
+    @Test
+    @DisplayName("FR-01 모든 조회처가 제한 시간 안에 응답하지 않으면 503으로 알린다")
+    void allSourcesTimedOut() {
+        BookLookupService service =
+                new BookLookupService(
+                        configured,
+                        json,
+                        (source, isbn) -> {
+                            try {
+                                Thread.sleep(Duration.ofSeconds(5));
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                            return null;
+                        });
+
+        ApiException error =
+                assertTimeoutPreemptively(
+                        Duration.ofSeconds(3),
+                        () ->
+                                assertThrows(
+                                        ApiException.class,
+                                        () -> service.lookup(ISBN, Duration.ofMillis(500))));
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, error.getStatus());
+    }
+
+    @Test
+    @DisplayName("FR-01 일부 조회처만 실패하고 나머지가 정상 응답했는데 결과가 없으면 정보 없음이다")
+    void partialFailureWithoutResultIsMissing() {
+        BookLookupService service =
+                new BookLookupService(
+                        configured,
+                        json,
+                        (source, isbn) -> {
+                            if (source.equals("nlk")) throw new IllegalStateException("일시 오류");
+                            return null;
+                        });
+
+        assertNull(service.lookup(ISBN));
     }
 }

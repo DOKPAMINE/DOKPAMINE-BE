@@ -295,6 +295,19 @@ class CatalogApiTest extends ApiTestSupport {
     }
 
     @Test
+    @DisplayName("FR-01 외부 조회처가 모두 실패하면 503과 다시 시도 안내를 반환한다")
+    void allSourcesUnavailable() throws Exception {
+        when(fetcher.fetch(anyString(), anyString()))
+                .thenThrow(new IllegalStateException("연결 실패"));
+
+        var error = request(get("/api/catalog/isbn/9788937460449"), user(), null, 503);
+        assertEquals("CATALOG_UNAVAILABLE", error.path("code").asString());
+        assertEquals(
+                "책 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+                error.path("message").asString());
+    }
+
+    @Test
     @DisplayName("FR-01 장르 목록은 YES24 대분야에 맞춘 아홉 장르다")
     void genres() throws Exception {
         var genres = request(get("/api/catalog/genres"), user(), null, 200);

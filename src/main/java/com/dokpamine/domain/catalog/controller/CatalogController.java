@@ -53,6 +53,13 @@ public class CatalogController {
                 content =
                         @Content(
                                 mediaType = "application/json",
+                                schema = @Schema(implementation = ErrorResponse.class))),
+        @ApiResponse(
+                responseCode = "503",
+                description = "외부 조회처가 모두 실패하거나 제한 시간 안에 응답하지 않음(CATALOG_UNAVAILABLE)",
+                content =
+                        @Content(
+                                mediaType = "application/json",
                                 schema = @Schema(implementation = ErrorResponse.class)))
     })
     public CatalogBook byIsbn(
