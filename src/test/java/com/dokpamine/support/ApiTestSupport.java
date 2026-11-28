@@ -62,7 +62,8 @@ public abstract class ApiTestSupport {
     }
 
     protected User user() {
-        return user("독자", false);
+        // FR-10: 닉네임은 고유해야 하므로 한 테스트에서 여러 명을 만들어도 겹치지 않게 한다.
+        return user("독자" + UUID.randomUUID().toString().substring(0, 8), false);
     }
 
     protected User user(String nickname, boolean optedIn) {
