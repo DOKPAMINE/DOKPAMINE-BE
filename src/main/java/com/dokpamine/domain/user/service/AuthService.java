@@ -45,8 +45,9 @@ public class AuthService {
     @Transactional
     public TokenResponse signup(SignupRequest request) {
         String username = request.username().toLowerCase(Locale.ROOT);
-        if (users.existsByUsername(username))
-            throw ApiException.conflict("USERNAME_TAKEN", "이미 사용 중인 아이디예요.");
+        String nickname = TextValues.trim(request.nickname());
+        if (users.existsByUsername(username)) throw usernameTaken();
+        if (users.existsByNickname(nickname)) throw nicknameTaken();
         User user;
         try {
             // FR-10: 사전 조회를 함께 통과한 가입도 토큰 발급 전에 UNIQUE 충돌을 확인한다.
@@ -56,12 +57,10 @@ public class AuthService {
                                     UUID.randomUUID(),
                                     username,
                                     passwords.encode(request.password()),
-                                    TextValues.trim(request.nickname())));
+                                    nickname));
         } catch (DataIntegrityViolationException e) {
-            if (e.getMostSpecificCause() instanceof SQLException sql
-                    && "23505".equals(sql.getSQLState())) {
-                throw ApiException.conflict("USERNAME_TAKEN", "이미 사용 중인 아이디예요.");
-            }
+            if (isUniqueViolation(e))
+                throw isNicknameViolation(e) ? nicknameTaken() : usernameTaken();
             throw e;
         }
         return issueToken(user);
@@ -83,9 +82,40 @@ public class AuthService {
     @Transactional
     public MeResponse updateMe(UUID id, UpdateMeRequest request) {
         User user = findUser(id);
-        if (request.nickname() != null) user.setNickname(TextValues.trim(request.nickname()));
+        if (request.nickname() != null) {
+            String nickname = TextValues.trim(request.nickname());
+            // FR-10: 내 현재 닉네임을 다시 보내는 요청은 중복으로 보지 않는다.
+            if (users.existsByNicknameAndIdNot(nickname, id)) throw nicknameTaken();
+            user.setNickname(nickname);
+        }
         if (request.rankingOptIn() != null) user.setRankingOptIn(request.rankingOptIn());
+        try {
+            // FR-10: 동시에 같은 닉네임으로 바꾼 요청도 커밋 전에 409로 응답한다.
+            users.flush();
+        } catch (DataIntegrityViolationException e) {
+            if (isUniqueViolation(e) && isNicknameViolation(e)) throw nicknameTaken();
+            throw e;
+        }
         return new MeResponse(user);
+    }
+
+    private static boolean isUniqueViolation(DataIntegrityViolationException e) {
+        return e.getMostSpecificCause() instanceof SQLException sql
+                && "23505".equals(sql.getSQLState());
+    }
+
+    // H2와 PostgreSQL 모두 위반한 제약 이름을 메시지에 담으므로 이름으로 어느 열인지 구분한다.
+    private static boolean isNicknameViolation(DataIntegrityViolationException e) {
+        String message = e.getMostSpecificCause().getMessage();
+        return message != null && message.toLowerCase(Locale.ROOT).contains("uk_users_nickname");
+    }
+
+    private static ApiException usernameTaken() {
+        return ApiException.conflict("USERNAME_TAKEN", "이미 사용 중인 아이디예요.");
+    }
+
+    private static ApiException nicknameTaken() {
+        return ApiException.conflict("NICKNAME_TAKEN", "이미 사용 중인 닉네임이에요.");
     }
 
     private User findUser(UUID id) {

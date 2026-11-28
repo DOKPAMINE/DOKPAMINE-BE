@@ -32,14 +32,16 @@ BE와 AOS가 공유하는 단일 계약 문서다. **API를 바꾸면 이 문서
 
 | Method | Path | Body | 응답 |
 |---|---|---|---|
-| POST | `/api/auth/signup` | `{username, password(8~64자, UTF-8 최대 72바이트), nickname(1~15)}` | 201 `TokenResponse` · 400 `VALIDATION_FAILED` · 409 `USERNAME_TAKEN` |
+| POST | `/api/auth/signup` | `{username, password(8~64자, UTF-8 최대 72바이트), nickname(1~15)}` | 201 `TokenResponse` · 400 `VALIDATION_FAILED` · 409 `USERNAME_TAKEN` · 409 `NICKNAME_TAKEN` |
 | POST | `/api/auth/login` | `{username, password}` | 200 `TokenResponse` · 400 `VALIDATION_FAILED` · 401 `INVALID_CREDENTIALS` |
 | GET | `/api/me` | - | `MeResponse` |
-| PATCH | `/api/me` | `{nickname?, rankingOptIn?}` | `MeResponse` · 400 `VALIDATION_FAILED` |
+| PATCH | `/api/me` | `{nickname?, rankingOptIn?}` | `MeResponse` · 400 `VALIDATION_FAILED` · 409 `NICKNAME_TAKEN` |
 
 가입·로그인 아이디와 가입·프로필 수정 닉네임은 Unicode 공백을 포함한 앞뒤 공백을 제거한 뒤 검증한다. 신규 가입 아이디는 영문·숫자·밑줄 4~30자이며 소문자로 저장한다. 로그인은 대소문자를 구분하지 않으며 최대 255자를 받는다. 기존 계정은 가입에 사용한 이메일 주소 전체를 아이디로 사용하며, 구버전 앱의 로그인 요청은 `email`을 `username`의 별칭으로 받는다.
 
 가입과 프로필 수정에서 입력한 닉네임은 정규화 후 1~15자여야 하며 범위를 벗어나면 400 `VALIDATION_FAILED`를 반환한다. 프로필 수정에서 닉네임을 생략하거나 `null`을 보내면 15자를 초과하는 기존 닉네임도 유지한다.
+
+닉네임은 사용자마다 고유하다(#97). 정규화한 값이 다른 사용자의 닉네임과 같으면 가입과 프로필 수정 모두 409 `NICKNAME_TAKEN`, `이미 사용 중인 닉네임이에요.`를 반환하고 저장하지 않는다. 대소문자는 구분한다(`Reader`와 `reader`는 다른 닉네임). 프로필 수정에서 내 현재 닉네임을 그대로 보내면 중복으로 보지 않는다. 가입에서 아이디와 닉네임이 모두 겹치면 `USERNAME_TAKEN`을 반환한다. 배포 전부터 중복이던 닉네임은 가장 먼저 가입한 사용자만 원래 값을 유지하고, 나머지는 `앞 6자#ID 앞 8자` 형식(예: `독자#3f2a9c1e`)으로 바뀐다. **AOS 영향 있음:** 가입·닉네임 수정 화면에서 409 `NICKNAME_TAKEN`을 받으면 닉네임 입력란에 `message`를 보여 주어야 한다.
 
 `TokenResponse = {accessToken, expiresAt, user: MeResponse}`, `MeResponse = {id, username, nickname, rankingOptIn}`. 토큰 유효기간은 14일이고 리프레시 토큰은 없다(만료되면 재로그인).
 

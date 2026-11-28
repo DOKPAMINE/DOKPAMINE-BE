@@ -58,7 +58,8 @@ class RecordInsertRaceApiTest extends ApiTestSupport {
     @ValueSource(booleans = {false, true})
     @DisplayName("FR-15 시간 수정과 페이지 수정이 경합해도 책 변경과 무관하게 MANUAL과 랭킹 제외를 유지한다")
     void preservesManualDuringConcurrentUpdates(boolean moveBook) throws Exception {
-        User owner = user("독자", true);
+        // FR-10: 이 테스트는 사용자를 커밋하므로 반복 실행에서도 닉네임이 겹치지 않게 한다.
+        User owner = user("독자" + UUID.randomUUID().toString().substring(0, 8), true);
         ReadingSession original = session(owner, 600, MONDAY, SessionSource.TIMER, false);
         UUID targetBook = moveBook ? book(owner).getId() : original.getBookId();
         String path = "/api/sessions/" + original.getId();

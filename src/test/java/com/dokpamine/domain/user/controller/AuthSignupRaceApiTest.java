@@ -40,12 +40,16 @@ class AuthSignupRaceApiTest extends ApiTestSupport {
     @MockitoSpyBean private UserRepository userRepository;
     @Autowired private AuthService authService;
     private final String username = UUID.randomUUID().toString().substring(0, 8);
+    private final String otherUsername = UUID.randomUUID().toString().substring(0, 8);
+    private final String nickname = "독자" + username;
 
     @AfterEach
     void cleanCommittedData() {
         reset(userRepository);
-        User saved = users.findByUsername(username);
-        if (saved != null) users.deleteById(saved.getId());
+        for (String value : List.of(username, otherUsername)) {
+            User saved = users.findByUsername(value);
+            if (saved != null) users.deleteById(saved.getId());
+        }
     }
 
     @ParameterizedTest
@@ -66,8 +70,9 @@ class AuthSignupRaceApiTest extends ApiTestSupport {
         }).when(userRepository).existsByUsername(username);
 
         try (var executor = Executors.newFixedThreadPool(2)) {
-            var first = executor.submit(() -> signup(username));
-            var second = executor.submit(() -> signup(contenderUsername));
+            // 닉네임은 서로 달라야 아이디 UNIQUE 충돌만 검증한다.
+            var first = executor.submit(() -> signup(username, nickname));
+            var second = executor.submit(() -> signup(contenderUsername, "독자" + otherUsername));
             var responses = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
             assertEquals(List.of(201, 409), responses.stream().map(r -> r.getStatus()).sorted().toList());
             var conflict = responses.stream().filter(r -> r.getStatus() == 409).findFirst().orElseThrow();
@@ -92,15 +97,44 @@ class AuthSignupRaceApiTest extends ApiTestSupport {
         var failure = new DataIntegrityViolationException("길이 초과", new SQLException("길이 초과", "22001"));
         doThrow(failure).when(userRepository).saveAndFlush(any(User.class));
         assertSame(failure, assertThrows(DataIntegrityViolationException.class,
-                () -> authService.signup(new SignupRequest(username, "password1", "독자"))));
+                () -> authService.signup(new SignupRequest(username, "password1", nickname))));
         assertFalse(users.existsByUsername(username));
     }
 
-    private org.springframework.mock.web.MockHttpServletResponse signup(String username) throws Exception {
+    @Test
+    @DisplayName("FR-10 같은 닉네임으로 동시에 가입하면 한 건만 저장하고 다른 요청은 409 NICKNAME_TAKEN을 반환한다")
+    void preservesNicknameConflictContract() throws Exception {
+        long originalCount = users.count();
+        CyclicBarrier bothChecked = new CyclicBarrier(2);
+        var repositoryQuery = mockingDetails(userRepository).getMockCreationSettings().getDefaultAnswer();
+        doAnswer(invocation -> {
+            boolean exists = (boolean) repositoryQuery.answer(invocation);
+            assertFalse(exists);
+            // FR-10: 두 요청이 실제 DB 닉네임 조회를 통과한 뒤에 저장하도록 맞춘다.
+            bothChecked.await(10, TimeUnit.SECONDS);
+            return exists;
+        }).when(userRepository).existsByNickname(nickname);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> signup(username, nickname));
+            var second = executor.submit(() -> signup(otherUsername, " " + nickname + " "));
+            var responses = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
+            assertEquals(List.of(201, 409), responses.stream().map(r -> r.getStatus()).sorted().toList());
+            var conflict = responses.stream().filter(r -> r.getStatus() == 409).findFirst().orElseThrow();
+            var error = json.readTree(conflict.getContentAsByteArray());
+            assertEquals("NICKNAME_TAKEN", error.path("code").asString());
+            assertEquals("이미 사용 중인 닉네임이에요.", error.path("message").asString());
+            assertFalse(error.has("accessToken"));
+            assertEquals(originalCount + 1, users.count());
+        }
+    }
+
+    private org.springframework.mock.web.MockHttpServletResponse signup(String username, String nickname)
+            throws Exception {
         return mvc.perform(post("/api/auth/signup")
                         .contentType(APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of(
-                                "username", username, "password", "password1", "nickname", "독자"))))
+                                "username", username, "password", "password1", "nickname", nickname))))
                 .andReturn().getResponse();
     }
 }

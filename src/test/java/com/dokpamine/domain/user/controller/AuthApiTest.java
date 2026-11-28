@@ -133,8 +133,10 @@ class AuthApiTest extends ApiTestSupport {
         assertEquals(legacy, unchanged.path("nickname").asString());
         var updateError = request(patch("/api/me"), user, Map.of("nickname", legacy), 400);
         assertEquals("VALIDATION_FAILED", updateError.path("code").asString());
-        var changed = request(patch("/api/me"), user, Map.of("nickname", limit), 200);
-        assertEquals(limit, changed.path("nickname").asString());
+        // FR-10: 가입한 사용자가 이미 쓰는 닉네임과 겹치지 않게 다른 15자 닉네임으로 수정한다.
+        String otherLimit = "나".repeat(15);
+        var changed = request(patch("/api/me"), user, Map.of("nickname", otherLimit), 200);
+        assertEquals(otherLimit, changed.path("nickname").asString());
     }
 
     @Test
@@ -148,7 +150,7 @@ class AuthApiTest extends ApiTestSupport {
             assertEquals("VALIDATION_FAILED", error.path("code").asString());
             em.clear();
             var saved = users.findById(user.getId()).orElseThrow();
-            assertEquals("독자", saved.getNickname());
+            assertEquals(user.getNickname(), saved.getNickname());
             assertFalse(saved.getRankingOptIn());
         }
     }
@@ -200,5 +202,60 @@ class AuthApiTest extends ApiTestSupport {
         mvc.perform(get("/api/me").header("Authorization", "Bearer invalid"))
                 .andExpect(status().isUnauthorized());
         request(get("/actuator/health"), null, null, 200);
+    }
+
+    @Test
+    @DisplayName("FR-10 다른 사용자가 쓰는 닉네임으로 가입하면 앞뒤 공백과 무관하게 409 NICKNAME_TAKEN을 반환한다")
+    void rejectsDuplicateSignupNickname() throws Exception {
+        var owner = user();
+        em.flush();
+        long count = users.count();
+        for (String nickname : List.of(owner.getNickname(), "\u00a0 " + owner.getNickname() + "\u3000")) {
+            JsonNode error = request(post("/api/auth/signup"), null, Map.of(
+                    "username", UUID.randomUUID().toString().substring(0, 8),
+                    "password", "password1", "nickname", nickname), 409);
+            assertEquals("NICKNAME_TAKEN", error.path("code").asString());
+            assertEquals("이미 사용 중인 닉네임이에요.", error.path("message").asString());
+            assertFalse(error.has("accessToken"));
+            assertEquals(count, users.count());
+        }
+    }
+
+    @Test
+    @DisplayName("FR-10 아이디와 닉네임이 모두 겹치면 409 USERNAME_TAKEN을 반환한다")
+    void prefersUsernameConflict() throws Exception {
+        Map<String, Object> body = Map.of(
+                "username", UUID.randomUUID().toString().substring(0, 8),
+                "password", "password1", "nickname", "겹치는 이름");
+        request(post("/api/auth/signup"), null, body, 201);
+        JsonNode error = request(post("/api/auth/signup"), null, body, 409);
+        assertEquals("USERNAME_TAKEN", error.path("code").asString());
+    }
+
+    @Test
+    @DisplayName("FR-10 다른 사용자의 닉네임으로 수정하면 409를 반환하고 내 닉네임은 그대로 둔다")
+    void rejectsDuplicateProfileNickname() throws Exception {
+        var owner = user();
+        var other = user();
+        em.flush();
+        JsonNode error = request(patch("/api/me"), other,
+                Map.of("nickname", " " + owner.getNickname() + " ", "rankingOptIn", true), 409);
+        assertEquals("NICKNAME_TAKEN", error.path("code").asString());
+        assertEquals("이미 사용 중인 닉네임이에요.", error.path("message").asString());
+        em.clear();
+        var saved = users.findById(other.getId()).orElseThrow();
+        assertEquals(other.getNickname(), saved.getNickname());
+        assertFalse(saved.getRankingOptIn());
+    }
+
+    @Test
+    @DisplayName("FR-10 내 현재 닉네임을 그대로 보내면 중복으로 보지 않고 200을 반환한다")
+    void allowsOwnNickname() throws Exception {
+        var user = user();
+        em.flush();
+        JsonNode changed = request(patch("/api/me"), user,
+                Map.of("nickname", user.getNickname(), "rankingOptIn", true), 200);
+        assertEquals(user.getNickname(), changed.path("nickname").asString());
+        assertTrue(changed.path("rankingOptIn").asBoolean());
     }
 }

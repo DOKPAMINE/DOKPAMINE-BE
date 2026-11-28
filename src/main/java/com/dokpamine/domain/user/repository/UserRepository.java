@@ -11,5 +11,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     boolean existsByUsername(String username);
 
+    boolean existsByNickname(String nickname);
+
+    boolean existsByNicknameAndIdNot(String nickname, UUID id);
+
     List<User> findAllByRankingOptInTrue();
 }
